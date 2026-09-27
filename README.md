@@ -131,10 +131,19 @@ is picked up without a reboot.
 | | |
 | --- | --- |
 | Board | TI **LP-EM-CC2340R5** (Cortex-M0+, 512 KB flash, 36 KB RAM) |
-| Sensor | Bosch **BMI270** accelerometer breakout on I²C |
+| Sensor | Bosch **BMI270** accelerometer breakout on I²C — **optional** |
 
-The accelerometer is optional: build with `-DCONFIG_APP_SENSOR_SIM=y` for a simulated
-backend and everything except real motion still works.
+**The accelerometer is optional.** Both ways of running this reach the same crash through
+the same code, so pick whichever matches the hardware you have:
+
+| | build | trigger the crash |
+| --- | --- | --- |
+| **With a BMI270** | default | shake the device |
+| **Without one** | `-DCONFIG_APP_SENSOR_SIM=y` | press **button 2** |
+
+Button 2 completes a synthetic shake, so detection, reporting and the faulting code all
+run exactly as they do for a real one. The coredump is indistinguishable — same function,
+same stack, same program counter. Shaking a real sensor is only more convincing to watch.
 
 ### Wiring
 
@@ -201,6 +210,12 @@ Then, with `.venv/bin` on `PATH` so the post-link step finds `crc_tool`:
 west build -b lp_em_cc2340r5 asset_tracker/app -d build/tracker
 ```
 
+Without a BMI270 wired up, add `-- -DCONFIG_APP_SENSOR_SIM=y` for the simulated backend:
+
+```sh
+west build -b lp_em_cc2340r5 asset_tracker/app -d build/sim -- -DCONFIG_APP_SENSOR_SIM=y
+```
+
 Expect roughly **246 KB flash** and **36.5 KB of the 36 KB RAM — 99%**. That last number
 is not a typo and is the binding constraint on this port; `west build -t ram_report` shows
 where it goes.
@@ -263,7 +278,8 @@ asset tracker up: boot 1, reset POR
 supply 3.104 V
 ```
 
-Then, once a shake is detected:
+Now trigger the crash — **shake the device** if you wired up a BMI270, or **press button
+2** if you did not. Either way:
 
 ```
 shake detected: 19 swings, peak 4.538 g

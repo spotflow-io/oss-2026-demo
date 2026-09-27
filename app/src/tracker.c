@@ -198,7 +198,24 @@ static void sample_for_shakes(void)
 	uint16_t magnitude_mg;
 
 	if (sensor_poll_magnitude_mg(&magnitude_mg) != 0) {
-		return;
+		/*
+		 * No reading, so normally there is nothing to feed the detector - but a
+		 * forced shake still has to land.
+		 *
+		 * Fault injection is most useful exactly when the accelerometer is
+		 * absent or broken: on a board with nothing wired to I2C, button 2 is
+		 * the only way to reach the crash at all, and returning here used to
+		 * leave the forced flag set forever with the button appearing dead.
+		 *
+		 * The magnitude passed below is ignored - shake_detect_feed() handles
+		 * the forced flag before it looks at it - but pass rest rather than an
+		 * uninitialised or stale value.
+		 */
+		if (!shake_detect_forced()) {
+			return;
+		}
+
+		magnitude_mg = 1000U;
 	}
 
 	if (shake_detect_feed(magnitude_mg, k_uptime_get_32(), &event)) {

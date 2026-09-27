@@ -226,6 +226,11 @@ void shake_detect_force(void)
 	forced = true;
 }
 
+bool shake_detect_forced(void)
+{
+	return forced;
+}
+
 /*
  * Record the shake.
  *

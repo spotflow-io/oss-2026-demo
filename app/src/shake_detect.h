@@ -57,4 +57,7 @@ void shake_detect_record(const struct shake_event *event);
 /* Complete a synthetic shake on the next sample, for rehearsing without waving anything. */
 void shake_detect_force(void);
 
+/* True while a forced shake is waiting to be completed. */
+bool shake_detect_forced(void);
+
 #endif /* APP_SHAKE_DETECT_H */
