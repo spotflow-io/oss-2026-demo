@@ -15,6 +15,43 @@ batteries, and everything described below has been observed on a board.
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph device["CC2340R5 asset tracker"]
+        direction TB
+        sensor["BMI270 accelerometer"]
+        app["Application<br/>duty cycle · shake detection<br/>fault injection"]
+        sdk["Spotflow Device SDK<br/>logs · metrics · coredumps"]
+        gatt["BLE GATT service"]
+        sensor -->|I2C| app
+        app --> sdk
+        sdk --> gatt
+    end
+
+    gateway["Gateway<br/>Spotflow web app<br/>or tools/spotflow_ble_gateway.py"]
+
+    subgraph cloud["Spotflow platform"]
+        direction TB
+        logs["Logs"]
+        metrics["Metrics"]
+        dumps["Coredumps<br/>symbolicated with the ELF"]
+    end
+
+    gatt <-->|"BLE — notify and write"| gateway
+    gateway <-->|"MQTT over TLS"| cloud
+```
+
+The device has no IP connectivity of its own. It is a BLE peripheral; a **gateway** in
+range relays framed CBOR between it and the platform.
+
+Both directions matter. Upward go logs, metrics and coredumps. Downward goes
+configuration — which is how the sent log level is raised on a device already in the
+field, with no reflash and no physical access.
+
+---
+
 ## What the device reports
 
 Nothing about the cargo. Everything about the device.
@@ -94,9 +131,7 @@ is picked up without a reboot.
 | | |
 | --- | --- |
 | Board | TI **LP-EM-CC2340R5** (Cortex-M0+, 512 KB flash, 36 KB RAM) |
-| Debug probe | **LP-XDS110ET** — the LP-EM has no onboard debugger |
-| Sensor | Bosch **BMI270** breakout on I²C (e.g. LaskaKit) |
-| Power | USB via the probe, or 2×AA |
+| Sensor | Bosch **BMI270** accelerometer breakout on I²C |
 
 The accelerometer is optional: build with `-DCONFIG_APP_SENSOR_SIM=y` for a simulated
 backend and everything except real motion still works.
@@ -110,9 +145,7 @@ backend and everything except real motion still works.
 | SCL | BoosterPack pin 9 (DIO24) |
 | SDA | BoosterPack pin 10 (DIO0) |
 
-Default address `0x68`; the module carries its own pull-ups. Interrupt pins are unused.
-On the LP-XDS110ET, the `TGT VDD` jumper selects who powers the target: `XDS` for probe
-power, `EXT.` when the board has its own supply. **Only one supply may be live at a time.**
+Default address `0x68`; the breakout carries its own pull-ups. Interrupt pins are unused.
 
 ---
 
@@ -188,7 +221,11 @@ where it goes.
    **symbol file**. Without it a coredump arrives as registers with no call stack.
 
 The device has no IP connectivity, so a **gateway** relays its BLE traffic to Spotflow.
-Use the Spotflow web app's Bluetooth bridge, or the terminal fallback here:
+The simplest option is the Spotflow web app, which speaks Web Bluetooth straight from the
+browser — see
+[Use the Spotflow web app as a BLE gateway](https://docs.spotflow.io/fundamentals/bluetooth-low-energy#use-the-spotflow-web-app-as-a-ble-gateway).
+
+A terminal equivalent is included here for machines where the browser will not cooperate:
 
 ```sh
 export SPOTFLOW_INGEST_KEY=sf_ikv1_...
@@ -251,28 +288,6 @@ ASCII `"dtec"`, four bytes from the middle of *"rough handling de**tec**ted in t
 The annotation overran its buffer onto the function pointer, and the device branched into
 the text of its own log message. Line 287 is the call through the clobbered pointer; line
 285 is the `memcpy` that clobbered it. The bug is legible directly from the PC.
-
----
-
-## Battery operation
-
-The LP-EM has no regulator, so a 2×AA pack feeds the 3.3 V rail directly — 3.0 V nominal
-against a 1.8–3.8 V part. Connect **+ to the `3V3` pad, − to `GND`**, and set the probe's
-`TGT VDD` jumper to `EXT.` so it never sources power. With that done the probe can be
-attached or removed freely, and flashing still works on battery power.
-
-Verify with the pack off and USB in: `3V3` to `GND` must read **0 V**.
-
-The firmware reads the supply from the SoC's always-on battery monitor, so `battery_v` is
-a real measurement of the cells, not a model. Readings outside 1.5–3.8 V are reported as
-unavailable rather than as a wrong number — that is what a bench supply or debug probe
-looks like.
-
-Measured draw is **5–7 mA**, about two to three weeks on alkalines. It is dominated by
-demo choices rather than by the hardware: power management disabled, an LED held on, and
-the gyroscope enabled purely to keep the BMI270's temperature register alive.
-
-There is no reset button on the LP-EM. On battery, the pack's switch is the reset.
 
 ---
 
