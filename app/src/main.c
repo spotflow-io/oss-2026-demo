@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Asset tracker demo for the TI LP-EM-CC2340R5.
  *
  * A battery-powered BLE asset tag whose entire uplink to Spotflow is diagnostics: what

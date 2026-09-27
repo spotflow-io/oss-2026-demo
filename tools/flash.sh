@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Spotflow s.r.o.
+# SPDX-License-Identifier: Apache-2.0
+
 #
 # Flash the asset tracker onto an LP-EM-CC2340R5.
 #

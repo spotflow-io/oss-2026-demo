@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Simulated sensor backend.
  *
  * Stands in for the BMI270 when no sensor is wired up, and is the booth fallback if the

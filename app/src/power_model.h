@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Battery model.
  *
  * The LaunchPad runs from the debug probe, so there is no real cell and no fuel gauge.

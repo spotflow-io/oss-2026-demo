@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Why did this device restart, and how many times has it done so?
  *
  * The reset cause comes from hwinfo (the cc23x0 driver provides it) and is also

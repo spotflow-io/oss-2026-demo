@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Session metadata: the labels that let someone filter a fleet.
  *
  * The SDK already sends a run ID and the build ID, which is what matches a coredump to

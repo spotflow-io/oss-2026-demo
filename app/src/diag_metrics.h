@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * The diagnostics catalog.
  *
  * Eight application metrics, registered in one place so the budget is visible.

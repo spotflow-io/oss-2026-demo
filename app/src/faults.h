@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * The two buttons, and what they do to the device.
  *
  * Button 1 turns the sensor bus unreliable and back again - the degradation that the

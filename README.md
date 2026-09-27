@@ -337,3 +337,40 @@ the other about the memory ceiling.
 - **ATT MTU is 23 bytes**, the BLE minimum, chosen to save RAM. That caps throughput at
   roughly 444 B/s and is why a coredump takes seconds rather than milliseconds.
 
+---
+
+## Licensing
+
+**This repository is Apache-2.0** — see [`LICENSE`](LICENSE). Apache-2.0 because it is
+what Zephyr itself uses, so the application and the RTOS it is built against carry the
+same terms.
+
+The dependencies are *not* vendored here; `west update` fetches each one from its own
+repository, under its own licence:
+
+| Component | Source | Licence |
+| --- | --- | --- |
+| This application | here | Apache-2.0 |
+| Zephyr RTOS (TI `simplelink-zephyr`) | `TexasInstruments/simplelink-zephyr` | Apache-2.0 |
+| Spotflow Device SDK | `spotflow-io/device-sdk` | **BUSL-1.1** |
+
+### The Spotflow Device SDK is under the Business Source License
+
+Worth reading before you build on this, because it is not a permissive licence. The terms
+as published by Spotflow, s.r.o.:
+
+- **Additional Use Grant** — the SDK may be used, copied, modified and distributed *solely
+  to enable interaction with the Spotflow Platform*. Using it with another cloud service
+  or platform, or for a purpose not directly related to the Spotflow Platform, requires
+  written consent.
+- **Change Date** — four years after a version is published, it converts to **Apache-2.0**
+  automatically.
+- Non-production use is permitted outright; the grant above is what permits limited
+  production use.
+
+In practice: running this firmware against your own Spotflow workspace is exactly what the
+grant covers. Retargeting it at a different monitoring backend is not, and needs a
+conversation with Spotflow first — `hello@spotflow.io`.
+
+The full text ships with the SDK at `modules/lib/spotflow/LICENSE.MD` once `west update`
+has run.

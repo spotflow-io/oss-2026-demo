@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Spotflow s.r.o.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Minimal host-side Spotflow BLE gateway (macOS / Linux).
 

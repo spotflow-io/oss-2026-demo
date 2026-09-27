@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Shake detection - rough handling, not a drop.
  *
  * A parcel being shaken reads as repeated hard excursions either side of rest: the

@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2026 Spotflow s.r.o.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
  * Link diagnostics.
  *
  * The application never touches the Bluetooth API - the Spotflow SDK owns the radio,
