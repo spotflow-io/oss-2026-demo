@@ -150,7 +150,7 @@ or you get the application with no Zephyr and no modules.
 ```sh
 mkdir cc2340-tracker && cd cc2340-tracker
 python3 -m venv .venv && .venv/bin/pip install west
-.venv/bin/west init -m <this-repository-url> --mr main
+.venv/bin/west init -m https://github.com/kucerah0nza/cc2340r5-asset-tracker-demo.git --mr main
 .venv/bin/west update
 .venv/bin/pip install -r zephyr/scripts/requirements-base.txt
 ```
