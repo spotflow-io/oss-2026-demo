@@ -1,0 +1,64 @@
+/*
+ * Flash layout for the asset tracker demo.
+ *
+ * The board's default layout reserves 40 KiB for MCUboot and two 228 KiB OTA slots.
+ * This demo does no OTA (Spotflow's OTA path alone wants a 98 KiB heap, which does not
+ * exist on this part), so all of that is reclaimed and the space goes where it is
+ * actually useful: a coredump partition big enough for thread stacks rather than just
+ * the faulting context.
+ *
+ * Flash is not the constraint here - RAM is - and a larger dump costs flash and upload
+ * seconds, not RAM: the kernel writes the dump from the fault handler, and the SDK's
+ * post-reboot upload heap is chunk_size x queue_size (128 B x 1) regardless of size.
+ * What limits the dump in practice is the 23-byte ATT MTU, so the final size is chosen
+ * from the upload-rate measurement on hardware, not from this partition.
+ *
+ *   0x00000 .. 0x70000   application   448 KiB  (capped by CONFIG_FLASH_LOAD_SIZE)
+ *   0x70000 .. 0x7c000   coredump       48 KiB
+ *   0x7c000 .. 0x80000   storage        16 KiB  (unused until Settings/NVS earns its RAM)
+ *
+ * All boundaries are 2 KiB-aligned, which the CC23x0 flash sector size requires.
+ */
+
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		/*
+		 * Re-created rather than simply deleted: the board's chosen node points
+		 * zephyr,code-partition at this label, so it has to keep existing even
+		 * though this build links from flash base and does not use it.
+		 */
+		slot0_partition: partition@0 {
+			label = "image-0";
+			reg = <0x00000000 0x00070000>;
+		};
+
+		/* The coredump backend looks up a fixed partition labelled
+		 * "coredump-partition"; the node name matters to the lookup macro.
+		 */
+		coredump_partition: partition@70000 {
+			label = "coredump-partition";
+			reg = <0x00070000 0x0000c000>;
+		};
+
+		storage_partition: partition@7c000 {
+			label = "storage";
+			reg = <0x0007c000 0x00004000>;
+		};
+	};
+};
+
+/*
+ * BMI270 on I2C0 (DIO24 = SCL, DIO0 = SDA, already pinned out by the board).
+ * Wiring and the 3.3 V supply the module needs are in README.md.
+ */
+&i2c0 {
+	bmi270: bmi270@68 {
+		compatible = "bosch,bmi270";
+		reg = <0x68>;
+	};
+};

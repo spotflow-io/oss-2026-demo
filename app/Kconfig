@@ -1,0 +1,212 @@
+#
+# Asset tracker application options.
+#
+# Everything here is about the demo's behaviour. The RAM tuning that makes it fit on
+# 36 KiB lives in boards/lp_em_cc2340r5.conf.
+#
+
+menu "Asset tracker demo"
+
+config APP_DUTY_CYCLE_INTERVAL_MS
+	int "Duty cycle period (ms)"
+	default 10000
+	range 1000 600000
+	help
+	  How often the tracker wakes, samples its sensors, attempts a position fix
+	  and reports. A field device would use minutes; the demo uses seconds so a
+	  conference audience sees something happen.
+
+config APP_FIX_INTERVAL_CYCLES
+	int "Attempt a position fix every N duty cycles"
+	default 3
+	range 1 100
+	help
+	  Position fixes are the expensive part of an asset tracker's duty cycle, so
+	  they run less often than sensor sampling. This ratio is what makes the
+	  radio-on and battery-drain metrics interesting.
+
+config APP_WATCHDOG
+	bool "Enable the hardware watchdog"
+	default y
+	help
+	  Feed wdt0 from the duty cycle loop and report the remaining margin as a
+	  metric. Also makes the watchdog-reset fault scenario possible: stop
+	  feeding it and the device resets with a reset cause but no coredump.
+
+config APP_WATCHDOG_TIMEOUT_MS
+	int "Watchdog timeout (ms)"
+	depends on APP_WATCHDOG
+	default 8000
+	help
+	  Must comfortably exceed one duty cycle plus the time the kernel needs to
+	  write a coredump to flash in the fault handler, or a crash would be cut
+	  short by a watchdog reset before the dump is complete.
+
+choice APP_SENSOR_BACKEND
+	prompt "Where motion readings come from"
+	default APP_SENSOR_BMI270
+	help
+	  The LaunchPad has no sensors of its own. Either a real BMI270 is wired to the
+	  BoosterPack header (see README.md for wiring and the 3.3 V supply, which the
+	  debug probe does not provide unless its TGT VDD jumper says so), or the tracker
+	  runs against a simulated part.
+
+config APP_SENSOR_BMI270
+	bool "Real Bosch BMI270 on I2C0"
+	select I2C
+	help
+	  Uses single-transaction register writes throughout: the stock Zephyr driver's
+	  split writes report success without updating the part on this I2C controller.
+
+config APP_SENSOR_SIM
+	bool "Simulated sensor"
+	help
+	  No hardware needed. Keeps the demo runnable when the sensor is not wired up,
+	  and is the booth fallback if the wiring lets go.
+
+endchoice
+
+config APP_SHAKE_SAMPLE_INTERVAL_MS
+	int "Shake detector sampling interval (ms)"
+	default 20
+	range 5 100
+	help
+	  How often the accelerometer is read while the duty cycle is otherwise idle.
+	  A shake is 2-5 Hz, so 50 Hz sampling catches every swing with room to spare,
+	  and costs about 4% of the I2C bus.
+
+config APP_SHAKE_REPORT_GRACE_MS
+	int "Grace period between reporting a shake and processing its record (ms)"
+	default 3000
+	range 0 30000
+	help
+	  The device faults while handling the shake record. Without a pause, the log line
+	  and metrics announcing the shake are still queued when it does, and the cloud sees
+	  a crash with no explanation - which is exactly what happened on hardware before
+	  this existed. Three seconds is ample for a couple of small messages even at a
+	  23-byte MTU.
+
+	  It is also what a real device would do: report the event, then get on with
+	  processing it. The bug is in the processing.
+
+config APP_SHAKE_LOG_LEVEL
+	int "Shake detector log level"
+	default 4
+	range 0 4
+
+menu "Fault injection"
+
+config APP_FAULT_INJECTION
+	bool "Enable fault injection"
+	default y
+	help
+	  Lets button 2 crash the device on purpose so the coredump path can be
+	  demonstrated. Leave enabled for the demo; disable for a build that should
+	  not be able to crash itself.
+
+choice APP_FAULT_KIND
+	prompt "What button 2 does"
+	default APP_FAULT_KIND_SHAKE
+	depends on APP_FAULT_INJECTION
+	help
+	  Cortex-M0+ has no MPU and no fault status registers, so not every kind of
+	  crash produces a legible coredump. See ti/PLAN.md section 4.4.
+
+config APP_FAULT_KIND_SHAKE
+	bool "Force a shake, and hit the bug in the detection logic"
+	help
+	  The primary demo fault, and the same path a real shake takes: the shake record
+	  is parsed with a misaligned 32-bit load, which Cortex-M4 forgives and this part
+	  does not. Button 2 only saves you waving the device about; shaking it for real
+	  runs exactly the same code.
+
+config APP_FAULT_KIND_ASSERT
+	bool "Violate a state machine invariant (k_oops)"
+	help
+	  Deterministic and always demo-safe, but obviously synthetic.
+
+config APP_FAULT_KIND_STACK_EXHAUSTION
+	bool "Exhaust the thread stack"
+	help
+	  Recurses until the stack canary trips and panics deliberately. Without an
+	  MPU this would otherwise corrupt neighbouring memory silently.
+
+config APP_FAULT_KIND_WATCHDOG
+	bool "Stop feeding the watchdog"
+	depends on APP_WATCHDOG
+	help
+	  Produces no coredump by design: the point is that the reset cause and boot
+	  counter still tell the story.
+
+endchoice
+
+choice APP_SHAKE_BUG_KIND
+	prompt "Which bug the shake record parser carries"
+	default APP_SHAKE_BUG_OVERFLOW
+	depends on APP_SHAKE_RECORD_BUG
+	help
+	  Both crash the device from inside the shake handling path. They differ in what a
+	  crash analyser makes of the dump, which matters when the analysis is on screen.
+
+config APP_SHAKE_BUG_OVERFLOW
+	bool "Buffer overflow over a function pointer"
+	help
+	  A length that describes the source instead of the destination: 34 bytes copied
+	  into a 16-byte buffer, running over the function pointer that follows it in the
+	  struct. The classic firmware buffer overflow, and the shape a crash analyser is
+	  most likely to recognise.
+
+config APP_SHAKE_BUG_UNALIGNED
+	bool "Unaligned 32-bit load"
+	help
+	  A word load at an odd offset, which Cortex-M4 forgives and ARMv6-M does not.
+	  Architecturally guaranteed to fault, but Spotflow's AI analysis misread it as a
+	  Bluetooth parsing fault - it named a function that is not even in the binary.
+
+endchoice
+
+config APP_SHAKE_RECORD_BUG
+	bool "Leave the bug in the shake record parser"
+	default y
+	depends on APP_FAULT_INJECTION
+	help
+	  The misaligned load that makes a detected shake crash the device. Turn off to
+	  rehearse shake detection itself - the detection, logging and metrics are
+	  unchanged, the device simply survives.
+
+endmenu
+
+menu "Diagnostics"
+
+config APP_SENSOR_LOG_LEVEL
+	int "Sensor module log level"
+	default 4
+	range 0 4
+	help
+	  Kept at DEBUG so the demo can raise the level from the Spotflow portal and
+	  see detail that was compiled in but filtered out. Costs flash, not much RAM.
+
+config APP_LINK_LOG_LEVEL
+	int "Link monitor log level"
+	default 4
+	range 0 4
+
+config APP_TRACKER_LOG_LEVEL
+	int "Tracker state machine log level"
+	default 3
+	range 0 4
+
+config APP_BOOT_COUNTER_NOINIT
+	bool "Keep the boot counter in uninitialised RAM"
+	default y
+	help
+	  Settings/NVS do not fit in this build, so the boot counter lives in a
+	  __noinit variable guarded by a magic value. It survives a warm reset if the
+	  SoC preserves SRAM, and falls back to reporting a cold boot if it does not.
+	  Unverified on cc23x0 - see MEMORY.md.
+
+endmenu
+
+endmenu
+
+source "Kconfig.zephyr"

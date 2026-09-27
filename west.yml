@@ -1,0 +1,45 @@
+# West manifest for the CC2340R5 asset tracker demo (T2 topology: this repo is the
+# manifest repo).
+#
+# Both pins are deliberate. A conference demo does not float on a branch tip:
+#
+#   zephyr    TI's SimpleLink downstream is the only Zephyr with a Bluetooth LE
+#             controller for cc23x0 (drivers/bluetooth/hci/hci_ti.c, wired as
+#             zephyr,bt_hci in the board DTS). Upstream Zephyr has none. This is the
+#             tag that spotflow-io/device-sdk PR #85 was developed against; moving to
+#             v3.7.0-ti-1.00.00_ga (the first GA release for CC2340R5, which fixes a
+#             hardfault in ibeacon with logging enabled and a systimer wraparound bug)
+#             is evaluated as its own measured step. See ti/PLAN.md, section 1.1.
+#
+#   spotflow  PR #85 "Feature/ti lp em cc2340r5" - the CC2340R5 board profile, the
+#             Zephyr 3.7 advertising-macro shim, warm reboot after coredump and
+#             MTU-derived BLE framing - merged to main on 2026-09-16. Pinned to that
+#             merge commit rather than to main itself: there is no release tag
+#             containing this work yet (v0.9.0 predates it), and a demo does not float
+#             on a branch tip. Re-pin to the tag when one ships.
+#
+# The name-allowlist keeps the workspace small: only what a BLE-only build needs.
+# picolibc is absent on purpose - the Zephyr SDK ships it, so the module is only
+# needed when building picolibc from source.
+
+manifest:
+  projects:
+    - name: zephyr
+      url: https://github.com/TexasInstruments/simplelink-zephyr
+      revision: v3.7.0-ti-9.10.04
+      clone-depth: 1
+      import:
+        name-allowlist:
+          - cmsis
+          - mcuboot
+          - simplelink-hal_ti
+          - tinycrypt
+          - zcbor
+
+    - name: spotflow
+      url: https://github.com/spotflow-io/device-sdk
+      revision: 829949a6f3f72dd106a24e445c9ec24ba8a23526
+      path: modules/lib/spotflow
+
+  self:
+    path: asset_tracker

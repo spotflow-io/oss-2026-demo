@@ -1,0 +1,339 @@
+# CC2340R5 Asset Tracker — remote diagnostics with Spotflow
+
+A battery-powered BLE asset tag on the TI LP-EM-CC2340R5 whose entire uplink is
+**diagnostics**: what the device knows about its own health, sent somewhere a firmware
+engineer can read it without a cable.
+
+Sensor readings and position fixes are simulated and stay on the device. What leaves it
+is whether those subsystems are working — logs, metrics and, when it crashes, a coredump.
+The firmware contains a **deliberate memory-safety bug** so the crash path can be
+demonstrated end to end: shake the device, it hard faults, and the coredump arrives in
+the cloud symbolicated.
+
+This is the firmware shown at the conference demo. It runs on real hardware, from real
+batteries, and everything described below has been observed on a board.
+
+---
+
+## What the device reports
+
+Nothing about the cargo. Everything about the device.
+
+**Logs.** Boot banner with reset cause, shake events, sensor failures, link changes.
+DEBUG is compiled in but not sent; the sent level is raised from the cloud, which is how
+you get detail out of a device already in the field without reflashing it.
+
+**Metrics.** Eight from the application, four from the Spotflow SDK:
+
+| metric | answers |
+| --- | --- |
+| `boot_count` | is it restarting, and how often? |
+| `battery_v` | how long has it got left? (float, real PMU reading) |
+| `radio_on_pct` | is something keeping the radio awake? |
+| `sensor_error_streak` | is the sensor flaky, or gone? |
+| `sensor_errors` (label `kind`) | what is the bus doing? |
+| `shakes_detected` | has it been handled roughly? |
+| `shake_peak_g` | how hard was the worst of it? (float) |
+| `link_disconnects` (label `reason`) | why does the link keep dropping? (raw HCI code) |
+| `boot_reset` (label `reason`) | SDK: POR, PIN, SOFTWARE, DEBUG |
+| `connection_transport_connected` | SDK: is a gateway relaying? |
+| `heap_free_bytes`, `heap_allocated_bytes` | SDK: memory headroom |
+
+That is twelve registered metrics, which is exactly
+`CONFIG_SPOTFLOW_METRICS_MAX_REGISTERED`. The registry is full: adding one means removing
+one.
+
+**Coredumps.** On a fault the SDK writes a dump, reboots, and uploads it over BLE. With
+the ELF uploaded to Spotflow as a symbol file, the stack symbolicates to function and
+line.
+
+---
+
+## What it does
+
+**Duty cycle.** One thread, every 10 seconds: read the sensor, attempt a position fix
+every third cycle, report, sleep.
+
+**Shake detection.** While otherwise idle the accelerometer is sampled every 20 ms — the
+10-second reporting cycle cannot see a 2–5 Hz shake. A swing is a hard excursion either
+side of rest; six in quick succession make a shake, and the detector then keeps counting
+until the shaking stops, so the reported swing count, duration and peak describe the whole
+event rather than its first second. The accelerometer runs at ±16 g so a hard shake does
+not clip.
+
+**The deliberate bug.** `format_shake_label()` in `app/src/shake_detect.c` copies a
+34-byte annotation into a 16-byte buffer, bounded by the length of the source instead of
+the size of the destination. The 18 bytes that do not fit land on the function pointer
+that follows the buffer in the struct; calling it branches into the text of the annotation
+and the device hard faults. There is no MPU on this part, so the write itself is never
+caught — the corruption is only discovered when the clobbered pointer is used.
+
+The bug lives *inside the detection logic*, which is the point: the feature that makes the
+product valuable is the feature that brings the device down. Set
+`CONFIG_APP_SHAKE_RECORD_BUG=n` for shake detection without the crash.
+
+**Fault injection.** Two buttons: button 1 makes the sensor bus unreliable and back again,
+button 2 crashes the device in the way selected by `CONFIG_APP_FAULT_KIND_*`. Green LED
+means the device believes it is healthy, red means it does not.
+
+Degraded mode is real, not simulated. It points the bus at an address nothing answers on,
+so the NAKs come from the I²C controller, and then powers the accelerometer down, so reads
+keep succeeding while the data stops changing — the failure mode that looks healthy from
+the outside. Recovery restarts the part for real.
+
+**Resilience.** A sensor that fails to initialise does not stop the device: it runs, the
+reads fail, the streak climbs, the red LED comes on and it says what is wrong with it.
+`sensor_init()` is retried every 12 consecutive failures with an I²C bus recovery, so a
+sensor that comes back — a reseated wire, a bus wedged by a warm reset mid-transaction —
+is picked up without a reboot.
+
+---
+
+## Hardware
+
+| | |
+| --- | --- |
+| Board | TI **LP-EM-CC2340R5** (Cortex-M0+, 512 KB flash, 36 KB RAM) |
+| Debug probe | **LP-XDS110ET** — the LP-EM has no onboard debugger |
+| Sensor | Bosch **BMI270** breakout on I²C (e.g. LaskaKit) |
+| Power | USB via the probe, or 2×AA |
+
+The accelerometer is optional: build with `-DCONFIG_APP_SENSOR_SIM=y` for a simulated
+backend and everything except real motion still works.
+
+### Wiring
+
+| BMI270 module | LP-EM-CC2340R5 |
+| --- | --- |
+| VCC | BoosterPack pin 1 (3.3 V) |
+| GND | BoosterPack pin 20 |
+| SCL | BoosterPack pin 9 (DIO24) |
+| SDA | BoosterPack pin 10 (DIO0) |
+
+Default address `0x68`; the module carries its own pull-ups. Interrupt pins are unused.
+On the LP-XDS110ET, the `TGT VDD` jumper selects who powers the target: `XDS` for probe
+power, `EXT.` when the board has its own supply. **Only one supply may be live at a time.**
+
+---
+
+## Prerequisites
+
+**Zephyr SDK 0.16.8.** Zephyr 3.7 pins it, and SDK 1.0.x declares itself incompatible with
+anything asking for < 1.0. Both can be installed side by side.
+
+```sh
+curl -LO https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64_minimal.tar.xz
+curl -LO https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/toolchain_macos-aarch64_arm-zephyr-eabi.tar.xz
+tar -xJf zephyr-sdk-0.16.8_macos-aarch64_minimal.tar.xz -C ~
+tar -xJf toolchain_macos-aarch64_arm-zephyr-eabi.tar.xz -C ~/zephyr-sdk-0.16.8
+~/zephyr-sdk-0.16.8/setup.sh -c
+```
+
+**`crc_tool`.** The cc23x0 build has a mandatory post-link step that patches CRC32s into
+the CCFG region; the boot ROM verifies them, so an image built without it does not run.
+The PyPI package pins `lief==0.12.3`, which has no wheels for recent Python:
+
+```sh
+pip install lief
+pip install --no-deps ti-simplelink-crc-tool
+```
+
+**TI UniFlash** for flashing (provides DSLite).
+
+---
+
+## Build
+
+This repository is a **west manifest repository** — clone it *through* west, not directly,
+or you get the application with no Zephyr and no modules.
+
+```sh
+mkdir cc2340-tracker && cd cc2340-tracker
+python3 -m venv .venv && .venv/bin/pip install west
+.venv/bin/west init -m <this-repository-url> --mr main
+.venv/bin/west update
+.venv/bin/pip install -r zephyr/scripts/requirements-base.txt
+```
+
+`west update` fetches Zephyr and the modules at the revisions `west.yml` pins. Both pins
+are deliberate and neither floats:
+
+- **Zephyr** — TI's `simplelink-zephyr` downstream is the only Zephyr with a Bluetooth LE
+  controller for cc23x0. Upstream has none.
+- **Spotflow device SDK** — pinned to the commit carrying CC2340R5 support.
+
+Then, with `.venv/bin` on `PATH` so the post-link step finds `crc_tool`:
+
+```sh
+west build -b lp_em_cc2340r5 asset_tracker/app -d build/tracker
+```
+
+Expect roughly **246 KB flash** and **36.5 KB of the 36 KB RAM — 99%**. That last number
+is not a typo and is the binding constraint on this port; `west build -t ram_report` shows
+where it goes.
+
+---
+
+## Point it at your Spotflow workspace
+
+1. Create a workspace at [spotflow.io](https://spotflow.io) and an **ingestion key**.
+2. Set the device identity in `app/prj.conf` if you are running more than one board:
+
+   ```
+   CONFIG_SPOTFLOW_DEVICE_ID="asset-tracker-01"
+   CONFIG_BT_DEVICE_NAME="Asset Tracker"
+   ```
+
+3. Upload the ELF (`build/tracker/zephyr/zephyr.elf`) to your firmware version as a
+   **symbol file**. Without it a coredump arrives as registers with no call stack.
+
+The device has no IP connectivity, so a **gateway** relays its BLE traffic to Spotflow.
+Use the Spotflow web app's Bluetooth bridge, or the terminal fallback here:
+
+```sh
+export SPOTFLOW_INGEST_KEY=sf_ikv1_...
+python3 tools/spotflow_ble_gateway.py
+```
+
+---
+
+## Flash
+
+```sh
+~/ti/uniflash_<version>/dslite.sh --mode flash \
+    --config=asset_tracker/tools/cc2340r5_xds110.ccxml --verbose -u \
+    build/tracker/zephyr/zephyr.hex
+```
+
+Pass `--verbose` even if you do not want the noise: without it DSLite prints nothing at
+all, success included.
+
+The supplied `.ccxml` was exported from the UniFlash GUI. The one setting that matters is
+**SWD Mode Settings = 2**: the CC2340R5 is SWD-only, and a config left at the JTAG default
+fails to connect with `Error -1170`.
+
+Flash **`zephyr.hex`**, never `zephyr.bin` — the `.bin` is over a gigabyte, because
+objcopy zero-fills the gap between flash at `0x0` and the CCFG region at `0x4E020000`.
+
+---
+
+## Run it
+
+Power the board, open your gateway, and within a minute you should see:
+
+```
+asset tracker up: boot 1, reset POR
+supply 3.104 V
+```
+
+Then, once a shake is detected:
+
+```
+shake detected: 19 swings, peak 4.538 g
+shake: 19 swings over 3099 ms, peak 4.538 g
+Device crashed.
+Core dump upload started.
+Coredump successfully sent.
+```
+
+The whole crash-to-cloud cycle takes about ten seconds over BLE. Opening the dump in
+Spotflow gives:
+
+```
+#0  0x63657464 in ?? ()
+#1  0x........ in format_shake_label () at app/src/shake_detect.c:287
+```
+
+(The frame 1 address varies between builds; the program counter in frame 0 does not.)
+
+Frame 0 is not a function because the program counter is not an address — `0x63657464` is
+ASCII `"dtec"`, four bytes from the middle of *"rough handling de**tec**ted in transit"*.
+The annotation overran its buffer onto the function pointer, and the device branched into
+the text of its own log message. Line 287 is the call through the clobbered pointer; line
+285 is the `memcpy` that clobbered it. The bug is legible directly from the PC.
+
+---
+
+## Battery operation
+
+The LP-EM has no regulator, so a 2×AA pack feeds the 3.3 V rail directly — 3.0 V nominal
+against a 1.8–3.8 V part. Connect **+ to the `3V3` pad, − to `GND`**, and set the probe's
+`TGT VDD` jumper to `EXT.` so it never sources power. With that done the probe can be
+attached or removed freely, and flashing still works on battery power.
+
+Verify with the pack off and USB in: `3V3` to `GND` must read **0 V**.
+
+The firmware reads the supply from the SoC's always-on battery monitor, so `battery_v` is
+a real measurement of the cells, not a model. Readings outside 1.5–3.8 V are reported as
+unavailable rather than as a wrong number — that is what a bench supply or debug probe
+looks like.
+
+Measured draw is **5–7 mA**, about two to three weeks on alkalines. It is dominated by
+demo choices rather than by the hardware: power management disabled, an LED held on, and
+the gyroscope enabled purely to keep the BMI270's temperature register alive.
+
+There is no reset button on the LP-EM. On battery, the pack's switch is the reset.
+
+---
+
+## Expected log lines that are not faults
+
+**`Failed to publish heartbeat: -11`, twice, shortly after every boot.** `-11` is
+`-EAGAIN`. The SDK schedules its first heartbeat immediately at init, roughly 30 ms into
+boot, long before a gateway can have connected; it retries at 10, 100 and 1000 ms, gives
+up, and logs twice. Exactly two lines per boot, harmless, and it stops once a gateway is
+present.
+
+**`no fix after 5000 ms, 0 sats`.** The simulated GPS failing, as designed. There is no
+GNSS receiver on this board.
+
+**`no watchdog available`.** `wdt0` is disabled in the board devicetree. The watchdog is
+deliberately off: nothing feeds it while the fault handler writes a coredump, and a reset
+mid-write would truncate the dump the demo exists to show.
+
+---
+
+## Repository layout
+
+```
+app/
+  prj.conf                     what the firmware does
+  boards/lp_em_cc2340r5.conf   the 36 KB RAM budget, separately
+  src/
+    main.c                     startup
+    tracker.c                  the duty cycle
+    shake_detect.c             shake detection, and the deliberate bug
+    sensor_bmi270.c            BMI270 driver
+    sensor_sim.c               simulated backend
+    diag_metrics.c/h           the metric catalogue and its rationale
+    faults.c                   button-driven fault injection
+    power_model.c              supply measurement and radio duty accounting
+    boot_info.c, link_monitor.c, geo_sim.c, session_meta.c
+tools/
+  flash.sh                     flashing helper
+  cc2340r5_xds110.ccxml        DSLite target configuration
+  spotflow_ble_gateway.py      host-side BLE → Spotflow relay
+  bringup.py                   sensor bring-up check
+west.yml                       pinned Zephyr and Spotflow SDK revisions
+```
+
+`prj.conf` says what the firmware does; `boards/lp_em_cc2340r5.conf` holds every value
+that exists only because the part has 36 KB of RAM. Reading one tells you about the demo,
+the other about the memory ceiling.
+
+---
+
+## Notable constraints
+
+- **RAM is 99% used.** Buffer sizes, queue depths and stacks are tuned to fit. Almost any
+  addition fails to link.
+- **Every BMI270 register write is one I²C transaction.** The stock Zephyr driver uses
+  `i2c_burst_write_dt()`, which this controller splits in two; the BMI270 needs the
+  register address and data in a single transaction. Split writes *return success without
+  changing the register*, so the part answers, reports the right chip ID, and silently
+  never initialises. This application drives the sensor directly for that reason.
+- **ARMv6-M has no unaligned access and no MPU.** Memory corruption is discovered when the
+  damage is used, not when it is done.
+- **ATT MTU is 23 bytes**, the BLE minimum, chosen to save RAM. That caps throughput at
+  roughly 444 B/s and is why a coredump takes seconds rather than milliseconds.
+
