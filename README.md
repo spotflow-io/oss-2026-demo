@@ -342,7 +342,6 @@ tools/
   flash.sh                     flashing helper
   cc2340r5_xds110.ccxml        DSLite target configuration
   spotflow_ble_gateway.py      host-side BLE → Spotflow relay
-  bringup.py                   sensor bring-up check
 west.yml                       pinned Zephyr and Spotflow SDK revisions
 ```
 
