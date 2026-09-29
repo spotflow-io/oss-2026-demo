@@ -108,7 +108,7 @@ config APP_FAULT_INJECTION
 	  not be able to crash itself.
 
 choice APP_FAULT_KIND
-	prompt "What button 2 does"
+	prompt "What the button does"
 	default APP_FAULT_KIND_SHAKE
 	depends on APP_FAULT_INJECTION
 	help
@@ -120,7 +120,7 @@ config APP_FAULT_KIND_SHAKE
 	help
 	  The primary demo fault, and the same path a real shake takes: the shake label
 	  is formatted with a copy bounded by the source rather than the destination,
-	  which overruns a function pointer and hard faults. Button 2 only saves you
+	  which overruns a function pointer and hard faults. The button only saves you
 	  waving the device about; shaking it for real runs exactly the same code and
 	  produces the same stack.
 

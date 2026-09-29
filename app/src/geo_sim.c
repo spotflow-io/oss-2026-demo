@@ -13,7 +13,6 @@
 
 #include "geo_sim.h"
 #include "power_model.h"
-#include "sensor.h"
 #include "tracker.h"
 
 LOG_MODULE_REGISTER(app_geo, LOG_LEVEL_INF);
@@ -25,8 +24,7 @@ LOG_MODULE_REGISTER(app_geo, LOG_LEVEL_INF);
 #define TTFF_COLD_VAR_MS 3000U
 
 /* How often a fix simply does not come. Higher once the hardware is misbehaving. */
-#define FAIL_PCT_HEALTHY  8U
-#define FAIL_PCT_DEGRADED 35U
+#define FAIL_PCT 8U
 
 /* A failed attempt still costs the energy of listening. */
 #define FAIL_LISTEN_MS 5000U
@@ -40,7 +38,6 @@ void geo_sim_init(void)
 
 void geo_sim_attempt(struct geo_fix *out)
 {
-	uint32_t fail_pct = sensor_is_degraded() ? FAIL_PCT_DEGRADED : FAIL_PCT_HEALTHY;
 	uint32_t ttff;
 
 	if (have_warm_receiver) {
@@ -49,7 +46,7 @@ void geo_sim_attempt(struct geo_fix *out)
 		ttff = TTFF_COLD_MIN_MS + (sys_rand32_get() % TTFF_COLD_VAR_MS);
 	}
 
-	if ((sys_rand32_get() % 100U) < fail_pct) {
+	if ((sys_rand32_get() % 100U) < FAIL_PCT) {
 		tracker_wait_ms(FAIL_LISTEN_MS);
 		power_model_note_fix(FAIL_LISTEN_MS);
 

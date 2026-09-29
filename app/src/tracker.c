@@ -81,14 +81,21 @@ static void leds_init(void)
  */
 static void leds_update(void)
 {
-	bool degraded = sensor_is_degraded();
+	/*
+	 * Red once the sensor has failed often enough to call it unusable - the same bar
+	 * the log uses, so the light and the words agree.
+	 *
+	 * This used to follow a flag set by a button. With that gone the light has to
+	 * reflect the device's actual health, or it would sit green over a dead sensor.
+	 */
+	bool unhealthy = sensor_error_streak >= STREAK_ALARM;
 
 	if (gpio_is_ready_dt(&led_healthy)) {
-		(void)gpio_pin_set_dt(&led_healthy, degraded ? 0 : 1);
+		(void)gpio_pin_set_dt(&led_healthy, unhealthy ? 0 : 1);
 	}
 
 	if (gpio_is_ready_dt(&led_degraded)) {
-		(void)gpio_pin_set_dt(&led_degraded, degraded ? 1 : 0);
+		(void)gpio_pin_set_dt(&led_degraded, unhealthy ? 1 : 0);
 	}
 }
 
@@ -246,12 +253,7 @@ static void do_sample(void)
 				sensor_error_streak);
 		}
 
-		/*
-		 * Degraded mode is a failure this device was told to have, so leave it
-		 * alone - re-initialising would quietly undo the demo. Everything else is
-		 * a failure worth trying to recover from.
-		 */
-		if (!sensor_is_degraded() && (sensor_error_streak % STREAK_REPROBE) == 0U) {
+		if ((sensor_error_streak % STREAK_REPROBE) == 0U) {
 			LOG_WRN("re-initialising sensor after %u failed reads",
 				sensor_error_streak);
 
@@ -285,18 +287,20 @@ static void do_sample(void)
 	}
 }
 
+/*
+ * A fix attempt costs time and radio, which is the part the power model cares about.
+ * The result itself is not reported - see the catalogue note in diag_metrics.h.
+ */
 static void do_fix(void)
 {
 	struct geo_fix fix;
 
 	geo_sim_attempt(&fix);
-	diag_report_fix(fix.ok, fix.ttff_ms);
 }
 
 static void do_report(void)
 {
 	struct link_disconnect_event disconnects[LINK_DISCONNECT_REASONS];
-	uint32_t ttc_ms;
 
 	uint32_t battery_mv = power_model_battery_mv();
 
@@ -304,12 +308,7 @@ static void do_report(void)
 		diag_report_battery(battery_mv);
 	}
 	diag_report_radio_on_pct(power_model_radio_on_pct());
-	diag_report_gateway_absent(link_absent_s());
 	diag_report_sensor_streak(sensor_error_streak);
-
-	if (link_take_connect_event(&ttc_ms)) {
-		diag_report_link_connected(ttc_ms);
-	}
 
 	uint8_t n = link_take_disconnects(disconnects);
 

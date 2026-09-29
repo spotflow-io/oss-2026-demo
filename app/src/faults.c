@@ -18,23 +18,28 @@
 
 LOG_MODULE_REGISTER(app_faults, LOG_LEVEL_INF);
 
+/*
+ * One button, and it crashes the device.
+ *
+ * There used to be a second one that toggled a simulated sensor degradation. It is gone:
+ * driving the I2C controller at an address nothing answers on, repeatedly, put the
+ * controller into a state where its interrupt handler faulted with a NULL device pointer
+ * - a crash in the RTOS driver rather than the one this demo exists to show. The
+ * genuine failure reporting it was imitating happens on its own when a sensor actually
+ * fails, and is reported the same way.
+ */
 #define SW0_NODE DT_ALIAS(sw0)
-#define SW1_NODE DT_ALIAS(sw1)
 
 /* Mechanical buttons bounce for a few milliseconds; a quarter second is plenty. */
 #define DEBOUNCE_MS 250U
 
-static const struct gpio_dt_spec btn_degrade = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios, { 0 });
-static const struct gpio_dt_spec btn_fault = GPIO_DT_SPEC_GET_OR(SW1_NODE, gpios, { 0 });
+static const struct gpio_dt_spec btn_fault = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios, { 0 });
 
-static struct gpio_callback btn_degrade_cb;
 static struct gpio_callback btn_fault_cb;
 
-static atomic_t degrade_pending;
 static atomic_t fault_pending;
 static atomic_t watchdog_starved;
 
-static uint32_t last_degrade_ms;
 static uint32_t last_fault_ms;
 
 static bool debounce(uint32_t *last_ms)
@@ -48,18 +53,6 @@ static bool debounce(uint32_t *last_ms)
 	*last_ms = now;
 
 	return true;
-}
-
-static void on_degrade_pressed(const struct device *dev, struct gpio_callback *cb,
-			       uint32_t pins)
-{
-	ARG_UNUSED(dev);
-	ARG_UNUSED(cb);
-	ARG_UNUSED(pins);
-
-	if (debounce(&last_degrade_ms)) {
-		atomic_set(&degrade_pending, 1);
-	}
 }
 
 static void on_fault_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
@@ -149,16 +142,10 @@ static void trigger_fault(void)
 
 int faults_init(void)
 {
-	int rc = setup_button(&btn_degrade, &btn_degrade_cb, on_degrade_pressed);
+	int rc = setup_button(&btn_fault, &btn_fault_cb, on_fault_pressed);
 
 	if (rc != 0) {
 		LOG_ERR("button 1 unavailable: %d", rc);
-		return rc;
-	}
-
-	rc = setup_button(&btn_fault, &btn_fault_cb, on_fault_pressed);
-	if (rc != 0) {
-		LOG_ERR("button 2 unavailable: %d", rc);
 		return rc;
 	}
 
@@ -167,10 +154,6 @@ int faults_init(void)
 
 void faults_service(void)
 {
-	if (atomic_cas(&degrade_pending, 1, 0)) {
-		sensor_set_degraded(!sensor_is_degraded());
-	}
-
 	if (IS_ENABLED(CONFIG_APP_FAULT_INJECTION) && atomic_cas(&fault_pending, 1, 0)) {
 		trigger_fault();
 	}

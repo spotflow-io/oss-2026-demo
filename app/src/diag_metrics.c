@@ -150,20 +150,6 @@ void diag_report_radio_on_pct(uint8_t pct)
 	report(m_radio_on_pct, pct, "radio_on_pct");
 }
 
-void diag_report_link_connected(uint32_t time_to_connect_ms)
-{
-	/* Not reported: see the catalog note in diag_metrics.h. Still logged by the link
-	 * monitor, and the SDK's connection-state metric covers the same ground.
-	 */
-	ARG_UNUSED(time_to_connect_ms);
-}
-
-void diag_report_gateway_absent(uint32_t seconds)
-{
-	/* Not reported: see the catalog note in diag_metrics.h. */
-	ARG_UNUSED(seconds);
-}
-
 void diag_report_sensor_streak(uint32_t streak)
 {
 	report(m_sensor_streak, streak, "sensor_error_streak");
@@ -208,13 +194,6 @@ void diag_report_sensor_error(enum sensor_err kind)
 	if (rc < 0) {
 		LOG_WRN("metric sensor_errors dropped: %d", rc);
 	}
-}
-
-void diag_report_fix(bool ok, uint32_t ttff_ms)
-{
-	/* Not reported: see the catalog note in diag_metrics.h. */
-	ARG_UNUSED(ok);
-	ARG_UNUSED(ttff_ms);
 }
 
 void diag_report_shake(uint16_t peak_mg)

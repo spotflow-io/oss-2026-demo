@@ -69,23 +69,18 @@ LOG_MODULE_REGISTER(app_sensor, CONFIG_APP_SENSOR_LOG_LEVEL);
 #define BMI270_CMD_SOFT_RESET	 0xb6
 #define BMI270_INIT_STATUS_OK	 0x01
 #define BMI270_PWR_CTRL_ACC_GYR	 0x06
-#define BMI270_PWR_CTRL_OFF	 0x00
 #define BMI270_ACC_CONF_100_HZ	 0xa8
 #define BMI270_ACC_RANGE_16G	 0x03
 #define BMI270_GYR_CONF_100_HZ	 0xe8
 #define BMI270_GYR_RANGE_500_DPS 0x02
 
 /* The address nothing answers on. Used to produce real bus errors on demand. */
-#define BMI270_ADDR_WRONG 0x69
 
 /* Full scale of the configured range, in milli-g. */
 #define ACC_FULL_SCALE_MG 16000
 
 /* Motion above this counts as the asset having moved. Rough handling is shake_detect.c. */
 #define MOTION_WAKE_THRESHOLD_MG 250U
-
-/* Consecutive degraded reads before the part is powered down for good. */
-#define DEGRADED_POWERDOWN_AFTER 4
 
 /*
  * Consecutive bit-identical accelerometer samples before the part is called stuck.
@@ -96,9 +91,6 @@ LOG_MODULE_REGISTER(app_sensor, CONFIG_APP_SENSOR_LOG_LEVEL);
  * itself exactly, every time.
  */
 #define STUCK_AFTER_IDENTICAL_READS 3
-
-/* Share of degraded reads that go to the address nothing answers on. */
-#define DEGRADED_NAK_PCT 60
 
 /*
  * Per-range accelerometer trim, read out of the part at init and kept in RAM for the
@@ -117,10 +109,7 @@ static const int16_t cal_trim_factory[CAL_BUCKETS] = { 0, -1, 1, -2, 2, -3, 3, 0
 
 static const struct i2c_dt_spec bmi270 = I2C_DT_SPEC_GET(BMI270_NODE);
 
-static bool degraded;
-static bool powered_down;
 static enum sensor_err last_err;
-static uint32_t degraded_reads;
 /*
  * The last raw accelerometer sample, for stuck detection - the six bytes as they came
  * off the bus, not anything derived from them. See the comment in sensor_read().
@@ -129,13 +118,6 @@ static uint8_t last_raw[6];
 static bool have_last_raw;
 static uint32_t unchanged_reads;
 
-/* Where reads and writes are actually addressed; moved off the part in degraded mode. */
-static uint16_t target_addr;
-
-static uint32_t roll_percent(void)
-{
-	return sys_rand32_get() % 100U;
-}
 
 static int bmi270_write(uint8_t reg, const uint8_t *data, size_t len)
 {
@@ -151,7 +133,7 @@ static int bmi270_write(uint8_t reg, const uint8_t *data, size_t len)
 		memcpy(&buffer[1], data, len);
 	}
 
-	return i2c_write(bmi270.bus, buffer, len + 1U, target_addr);
+	return i2c_write(bmi270.bus, buffer, len + 1U, bmi270.addr);
 }
 
 static int bmi270_write_byte(uint8_t reg, uint8_t value)
@@ -167,7 +149,7 @@ static int bmi270_write_byte(uint8_t reg, uint8_t value)
 
 static int bmi270_read(uint8_t reg, uint8_t *data, size_t len)
 {
-	return i2c_write_read(bmi270.bus, target_addr, &reg, 1U, data, len);
+	return i2c_write_read(bmi270.bus, bmi270.addr, &reg, 1U, data, len);
 }
 
 static int load_config_blob(void)
@@ -275,7 +257,6 @@ static int start_sensor(void)
 		return -EIO;
 	}
 
-	powered_down = false;
 
 	return 0;
 }
@@ -285,12 +266,9 @@ int sensor_init(void)
 	uint8_t value;
 	int rc;
 
-	degraded = false;
-	degraded_reads = 0;
 	unchanged_reads = 0;
 	have_last_raw = false;
 	last_err = SENSOR_ERR_NONE;
-	target_addr = bmi270.addr;
 
 	memcpy(cal_trim, cal_trim_factory, sizeof(cal_trim));
 
@@ -344,12 +322,21 @@ int sensor_init(void)
 
 		if (attempt == BMI270_PROBE_RETRIES) {
 			LOG_ERR("no answer from sensor at 0x%02x after %d tries: %d",
-				target_addr, attempt + 1, rc);
+				bmi270.addr, attempt + 1, rc);
 			return rc;
 		}
 
-		LOG_WRN("sensor silent at 0x%02x (%d), recovering bus", target_addr, rc);
-		(void)i2c_recover_bus(bmi270.bus);
+		/*
+		 * i2c_recover_bus() is NULL on the CC23xx controller - the driver does not
+		 * implement it - so this returns -ENOSYS and clocks nothing out. Say so
+		 * rather than claiming a recovery that did not happen: if the bus is
+		 * genuinely wedged, only a power cycle clears it. The retry below still
+		 * helps when the sensor itself is slow or was briefly absent.
+		 */
+		int rec = i2c_recover_bus(bmi270.bus);
+
+		LOG_WRN("sensor silent at 0x%02x (%d), bus recovery %s", bmi270.addr, rc,
+			rec == 0 ? "done" : "unsupported - power cycle needed if wedged");
 		k_sleep(K_MSEC(5));
 	}
 
@@ -409,7 +396,7 @@ int sensor_init(void)
 		return rc;
 	}
 
-	LOG_INF("sensor ready (bmi270 at 0x%02x)", target_addr);
+	LOG_INF("sensor ready (bmi270 at 0x%02x)", bmi270.addr);
 
 	return 0;
 }
@@ -490,14 +477,9 @@ static int read_magnitude_mg(uint16_t *magnitude_mg, uint8_t *raw_out)
 int sensor_poll_magnitude_mg(uint16_t *magnitude_mg)
 {
 	/*
-	 * Deliberately not the full sensor_read(): the drop detector calls this many times
-	 * a second and only needs the six acceleration bytes, not temperature, and none of
-	 * the degradation bookkeeping.
+	 * Deliberately not the full sensor_read(): the shake detector calls this many
+	 * times a second and only needs the six acceleration bytes, not temperature.
 	 */
-	if (degraded || powered_down) {
-		return -EAGAIN;
-	}
-
 	return read_magnitude_mg(magnitude_mg, NULL);
 }
 
@@ -525,39 +507,10 @@ int sensor_read(struct sensor_sample *out)
 
 	last_err = SENSOR_ERR_NONE;
 
-	if (degraded) {
-		degraded_reads++;
-
-		/*
-		 * Point the bus somewhere nothing answers. The error that comes back is
-		 * a real NAK from the controller, not a fabricated one.
-		 */
-		target_addr = (roll_percent() < DEGRADED_NAK_PCT) ? BMI270_ADDR_WRONG
-								 : bmi270.addr;
-
-		/*
-		 * A part that has been misbehaving for a while stops converting. Powering
-		 * it down really does that: reads still succeed, and the data stops moving.
-		 */
-		if (!powered_down && degraded_reads > DEGRADED_POWERDOWN_AFTER) {
-			uint16_t saved = target_addr;
-
-			target_addr = bmi270.addr;
-			if (bmi270_write_byte(BMI270_REG_PWR_CTRL, BMI270_PWR_CTRL_OFF) == 0) {
-				powered_down = true;
-				LOG_DBG("accelerometer powered down");
-			}
-			target_addr = saved;
-		}
-	} else {
-		target_addr = bmi270.addr;
-		degraded_reads = 0;
-	}
-
 	rc = read_magnitude_mg(&magnitude_mg, raw);
 	if (rc != 0) {
 		last_err = classify(rc);
-		LOG_DBG("motion read failed at 0x%02x: %d", target_addr, rc);
+		LOG_DBG("motion read failed at 0x%02x: %d", bmi270.addr, rc);
 		return rc;
 	}
 
@@ -636,33 +589,5 @@ const char *sensor_err_str(enum sensor_err err)
 const char *sensor_backend_name(void)
 {
 	return "bmi270";
-}
-
-void sensor_set_degraded(bool value)
-{
-	degraded = value;
-	degraded_reads = 0;
-	unchanged_reads = 0;
-	have_last_raw = false;
-
-	if (value) {
-		LOG_WRN("sensor bus is unreliable");
-		return;
-	}
-
-	/* Recovery has to be real too: put the part back the way it was. */
-	target_addr = bmi270.addr;
-
-	if (powered_down && start_sensor() != 0) {
-		LOG_ERR("sensor did not restart");
-		return;
-	}
-
-	LOG_INF("sensor bus recovered");
-}
-
-bool sensor_is_degraded(void)
-{
-	return degraded;
 }
 

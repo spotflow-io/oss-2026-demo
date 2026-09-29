@@ -17,11 +17,9 @@
  * What matters for this demo is on the error side of the interface, not the data side:
  * the readings never leave the device, but every failure mode does.
  *
- * With the real part, the failures are real too. Degraded mode does not fake an error
- * code - it points the bus at an address nothing answers on, so the controller returns
- * a genuine NAK, and then powers the sensor down, so reads keep succeeding while the
- * data stops changing. That second one is the failure worth showing: from the outside
- * the device looks healthy.
+ * The failures reported here are the real ones the part produces: a NAK from the
+ * controller when nothing answers, a reading that stops changing, a transfer that does
+ * not complete. Nothing is fabricated.
  */
 
 #ifndef APP_SENSOR_H
@@ -54,11 +52,10 @@ int sensor_init(void);
 int sensor_read(struct sensor_sample *out);
 
 /*
- * One cheap magnitude sample in milli-g - about 1000 at rest, near 0 in free fall.
+ * One cheap magnitude sample in milli-g - about 1000 at rest.
  *
- * The drop detector calls this many times a second, which the 10-second sensor_read()
- * cadence cannot serve: an impact lasts milliseconds. Returns -EAGAIN while the part is
- * degraded or powered down.
+ * The shake detector calls this many times a second, which the 10-second sensor_read()
+ * cadence cannot serve: a swing lasts a fraction of a second.
  */
 int sensor_poll_magnitude_mg(uint16_t *magnitude_mg);
 
@@ -69,12 +66,6 @@ const char *sensor_err_str(enum sensor_err err);
 
 /* Which backend was built in: "bmi270" or "sim". Goes into session metadata. */
 const char *sensor_backend_name(void);
-
-/*
- * Degradation control. This is what turns a healthy device into a failing one on stage.
- */
-void sensor_set_degraded(bool degraded);
-bool sensor_is_degraded(void);
 
 
 

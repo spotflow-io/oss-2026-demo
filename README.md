@@ -109,20 +109,17 @@ The bug lives *inside the detection logic*, which is the point: the feature that
 product valuable is the feature that brings the device down. Set
 `CONFIG_APP_SHAKE_RECORD_BUG=n` for shake detection without the crash.
 
-**Fault injection.** Two buttons: button 1 makes the sensor bus unreliable and back again,
-button 2 crashes the device in the way selected by `CONFIG_APP_FAULT_KIND_*`. Green LED
-means the device believes it is healthy, red means it does not.
-
-Degraded mode is real, not simulated. It points the bus at an address nothing answers on,
-so the NAKs come from the I²C controller, and then powers the accelerometer down, so reads
-keep succeeding while the data stops changing — the failure mode that looks healthy from
-the outside. Recovery restarts the part for real.
+**Fault injection.** One button. Button 1 crashes the device in the way selected by
+`CONFIG_APP_FAULT_KIND_*`, by default the shake-label overflow above. Green LED means the
+sensor is working, red means it has failed enough consecutive reads to be called
+unusable — the same bar the log uses.
 
 **Resilience.** A sensor that fails to initialise does not stop the device: it runs, the
 reads fail, the streak climbs, the red LED comes on and it says what is wrong with it.
-`sensor_init()` is retried every 12 consecutive failures with an I²C bus recovery, so a
-sensor that comes back — a reseated wire, a bus wedged by a warm reset mid-transaction —
-is picked up without a reboot.
+`sensor_init()` is retried every 12 consecutive failures, so a sensor that comes back — a
+reseated wire — is picked up without a reboot. A genuinely wedged bus cannot be recovered
+in software on this part: `i2c_recover_bus()` is `NULL` in the CC23xx driver, so only a
+power cycle clears it, and the log says so rather than claiming otherwise.
 
 ---
 
@@ -139,11 +136,12 @@ the same code, so pick whichever matches the hardware you have:
 | | build | trigger the crash |
 | --- | --- | --- |
 | **With a BMI270** | default | shake the device |
-| **Without one** | `-DCONFIG_APP_SENSOR_SIM=y` | press **button 2** |
+| **Without one** | `-DCONFIG_APP_SENSOR_SIM=y` | press **button 1** |
 
-Button 2 completes a synthetic shake, so detection, reporting and the faulting code all
+Button 1 completes a synthetic shake, so detection, reporting and the faulting code all
 run exactly as they do for a real one. The coredump is indistinguishable — same function,
-same stack, same program counter. Shaking a real sensor is only more convincing to watch.
+same stack, same program counter, verified on hardware. Shaking a real sensor is only
+more convincing to watch.
 
 ### Wiring
 
@@ -279,7 +277,7 @@ supply 3.104 V
 ```
 
 Now trigger the crash — **shake the device** if you wired up a BMI270, or **press button
-2** if you did not. Either way:
+1** if you did not. Either way:
 
 ```
 shake detected: 19 swings, peak 4.538 g
@@ -294,7 +292,7 @@ Spotflow gives:
 
 ```
 #0  0x63657464 in ?? ()
-#1  0x........ in format_shake_label () at app/src/shake_detect.c:287
+#1  0x........ in format_shake_label () at app/src/shake_detect.c:298
 ```
 
 (The frame 1 address varies between builds; the program counter in frame 0 does not.)
@@ -302,8 +300,8 @@ Spotflow gives:
 Frame 0 is not a function because the program counter is not an address — `0x63657464` is
 ASCII `"dtec"`, four bytes from the middle of *"rough handling de**tec**ted in transit"*.
 The annotation overran its buffer onto the function pointer, and the device branched into
-the text of its own log message. Line 287 is the call through the clobbered pointer; line
-285 is the `memcpy` that clobbered it. The bug is legible directly from the PC.
+the text of its own log message. Line 298 is the call through the clobbered pointer; line
+296 is the `memcpy` that clobbered it. The bug is legible directly from the PC.
 
 ---
 

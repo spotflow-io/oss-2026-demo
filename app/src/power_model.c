@@ -41,9 +41,6 @@
 #define DRAW_FIX_UAS_PER_S    2600U
 #define DRAW_RADIO_UAS_PER_S  5400U
 
-/* Modelled capacity, chosen so the above drains a demo unit at a watchable rate. */
-#define CAPACITY_UAS 90000000ULL
-
 static uint64_t charge_used_uas;
 
 static uint32_t radio_on_ms_window;

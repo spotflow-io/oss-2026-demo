@@ -27,11 +27,11 @@
  *   shakes_detected           has it been handled roughly, and how often?
  *   shake_peak_g              how hard was the worst of it?
  *
- * Cut, and why they were the ones to go: link_time_to_connect_ms and gateway_absent_s
- * are both inferable from the transport connection state the SDK already reports, and
- * fix_failures is visible as a gap in ttff_ms. None of them carries a beat of the demo.
- * All three are still measured in the code - only the reporting is gone - so putting one
- * back is a registration away if the heap ever allows it.
+ * Not reported, deliberately: time-to-connect and gateway-absence are both inferable
+ * from the transport connection state the SDK already reports, and a failed position fix
+ * shows up as a gap rather than a number. The link monitor and the fix simulation still
+ * measure them - they drive the logs and the power model - so reporting one is a
+ * registration away if the heap ever allows it.
  *
  * Two of these are floats, and they are the two a person reads off a dashboard rather
  * than a log: battery_v and shake_peak_g. The device measures millivolts and milli-g
@@ -62,12 +62,9 @@ int diag_metrics_init(void);
 void diag_report_boot(uint32_t boot_count);
 void diag_report_battery(uint32_t mv);   /* reported as battery_v, in volts */
 void diag_report_radio_on_pct(uint8_t pct);
-void diag_report_link_connected(uint32_t time_to_connect_ms);
 void diag_report_link_disconnect(uint8_t hci_reason, uint8_t count);
-void diag_report_gateway_absent(uint32_t seconds);
 void diag_report_sensor_error(enum sensor_err kind);
 void diag_report_sensor_streak(uint32_t streak);
-void diag_report_fix(bool ok, uint32_t ttff_ms);
 void diag_report_shake(uint16_t peak_mg); /* reported as shake_peak_g, in g */
 
 #endif /* APP_DIAG_METRICS_H */
