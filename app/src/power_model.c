@@ -9,7 +9,13 @@
 
 #include <zephyr/kernel.h>
 
-#if defined(CONFIG_SOC_CC2340R5)
+/*
+ * The battery monitor is a CC23x0 peripheral, so the guard is on the series and not on
+ * one part: an earlier version tested CONFIG_SOC_CC2340R5, which silently compiled the
+ * supply reading out of every CC2340R53 build and left that board reporting no battery
+ * voltage at all. Same register, same arithmetic on both parts.
+ */
+#if defined(CONFIG_SOC_SERIES_CC23X0)
 /* Same include style the SoC's own ccfg.c uses; the HAL puts these on the path. */
 #include <inc/hw_memmap.h>
 #include <inc/hw_pmud.h>

@@ -25,8 +25,13 @@
 
 #include "sensor.h"
 
-/* Bumped by hand per demo build; the build ID is what uniquely identifies an image. */
-#define APP_FW_VERSION "0.1.0"
+/*
+ * A label for humans, bumped by hand. Keep it in step with the version you create in
+ * Spotflow: a device whose label disagrees with its version record is worse than one
+ * with no label. The build ID is what actually identifies an image - it is what a
+ * coredump is matched to symbols by - and the SDK reports that on its own.
+ */
+#define APP_FW_VERSION "0.9.1"
 
 /*
  * Which board this image was built for. Taken from CONFIG_BOARD rather than written out:
