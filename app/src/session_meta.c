@@ -28,8 +28,12 @@
 /* Bumped by hand per demo build; the build ID is what uniquely identifies an image. */
 #define APP_FW_VERSION "0.1.0"
 
-/* Which hardware this image expects. */
-#define APP_HW_REV "lp-em-cc2340r5"
+/*
+ * Which board this image was built for. Taken from CONFIG_BOARD rather than written out:
+ * the same source builds for the LP-EM-CC2340R5 and the LP-EM-CC2340R53, and a hardware
+ * label that has to be edited by hand is a label that will eventually be wrong.
+ */
+#define APP_HW_REV CONFIG_BOARD
 
 static const struct spotflow_session_label labels[] = {
 	{

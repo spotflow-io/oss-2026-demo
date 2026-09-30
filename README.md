@@ -1,7 +1,7 @@
 # CC2340R5 Asset Tracker — remote diagnostics with Spotflow
 
-A battery-powered BLE asset tag on the TI LP-EM-CC2340R5 whose entire uplink is
-**diagnostics**: what the device knows about its own health, sent somewhere a firmware
+A battery-powered BLE asset tag on the TI LP-EM-CC2340R5 and LP-EM-CC2340R53 whose
+entire uplink is **diagnostics**: what the device knows about its own health, sent somewhere a firmware
 engineer can read it without a cable.
 
 Sensor readings and position fixes are simulated and stay on the device. What leaves it
@@ -127,8 +127,13 @@ power cycle clears it, and the log says so rather than claiming otherwise.
 
 | | |
 | --- | --- |
-| Board | TI **LP-EM-CC2340R5** (Cortex-M0+, 512 KB flash, 36 KB RAM) |
+| Board | TI **LP-EM-CC2340R5** or **LP-EM-CC2340R53** (Cortex-M0+, 512 KB flash, 36 KB / 64 KB RAM) |
 | Sensor | Bosch **BMI270** accelerometer breakout on I²C — **optional** |
+
+Either board works, and they share one configuration: same flash layout, same pinout,
+same Cortex-M0+, same TI link-layer library. Only the SRAM differs, and the firmware is
+tuned to the smaller of the two so both behave identically. Pick your board with `-b`
+and everything else follows.
 
 **The accelerometer is optional.** Both ways of running this reach the same crash through
 the same code, so pick whichever matches the hardware you have:
@@ -145,7 +150,7 @@ more convincing to watch.
 
 ### Wiring
 
-| BMI270 module | LP-EM-CC2340R5 |
+| BMI270 module | LaunchPad |
 | --- | --- |
 | VCC | BoosterPack pin 1 (3.3 V) |
 | GND | BoosterPack pin 20 |
@@ -205,7 +210,7 @@ are deliberate and neither floats:
 Then, with `.venv/bin` on `PATH` so the post-link step finds `crc_tool`:
 
 ```sh
-west build -b lp_em_cc2340r5 asset_tracker/app -d build/tracker
+west build -b lp_em_cc2340r5 asset_tracker/app -d build/tracker     # or lp_em_cc2340r53
 ```
 
 Without a BMI270 wired up, add `-- -DCONFIG_APP_SENSOR_SIM=y` for the simulated backend:
@@ -214,9 +219,23 @@ Without a BMI270 wired up, add `-- -DCONFIG_APP_SENSOR_SIM=y` for the simulated 
 west build -b lp_em_cc2340r5 asset_tracker/app -d build/sim -- -DCONFIG_APP_SENSOR_SIM=y
 ```
 
-Expect roughly **246 KB flash** and **36.5 KB of the 36 KB RAM — 99%**. That last number
-is not a typo and is the binding constraint on this port; `west build -t ram_report` shows
-where it goes.
+Expect roughly **246 KB flash** either way, and:
+
+| Board | RAM |
+| --- | --- |
+| `lp_em_cc2340r5` | 36512 B of 36864 — **99%** |
+| `lp_em_cc2340r53` | 46624 B of 65536 — 71% |
+
+That 99% is not a typo, and it is the binding constraint on this port; `west build -t
+ram_report` shows where it goes.
+
+The CC2340R53 is not using 10 KB more for anything of ours. The entire difference is one
+symbol — TI's Bluetooth link-layer heap, which their own board defconfig sizes at 16 KB
+there against 6.25 KB on the CC2340R5, because on a 36 KB part there was nowhere else to
+take it from. Every other byte of RAM is identical between the two images. The remaining
+headroom on the CC2340R53 is left unspent on purpose: raising the ATT MTU would make
+coredump uploads far faster on one board only, and a demo whose timings depend on which
+unit you picked up is worse than a uniformly slow one.
 
 ---
 
@@ -250,6 +269,14 @@ python3 tools/spotflow_ble_gateway.py
 ## Flash
 
 ```sh
+asset_tracker/tools/flash.sh build/tracker
+```
+
+The script reads `CONFIG_BOARD` back out of the build and picks the matching target
+configuration, because the two parts need different `.ccxml` files — the `<platform>`
+block names the device. Underneath it is one DSLite call:
+
+```sh
 ~/ti/uniflash_<version>/dslite.sh --mode flash \
     --config=asset_tracker/tools/cc2340r5_xds110.ccxml --verbose -u \
     build/tracker/zephyr/zephyr.hex
@@ -258,9 +285,11 @@ python3 tools/spotflow_ble_gateway.py
 Pass `--verbose` even if you do not want the noise: without it DSLite prints nothing at
 all, success included.
 
-The supplied `.ccxml` was exported from the UniFlash GUI. The one setting that matters is
-**SWD Mode Settings = 2**: the CC2340R5 is SWD-only, and a config left at the JTAG default
-fails to connect with `Error -1170`.
+Both `.ccxml` files were exported from the UniFlash GUI. The one setting that matters is
+**SWD Mode Settings = 2**: these parts are SWD-only, and a config left at the JTAG default
+fails to connect with `Error -1170`. If a connect fails with `Error -615` instead, the
+target is not answering at all — check the board's power switch and that the debugger's
+SWD jumpers are fitted before touching the clock setting it suggests.
 
 Flash **`zephyr.hex`**, never `zephyr.bin` — the `.bin` is over a gigabyte, because
 objcopy zero-fills the gap between flash at `0x0` and the CCFG region at `0x4E020000`.
@@ -327,7 +356,8 @@ mid-write would truncate the dump the demo exists to show.
 ```
 app/
   prj.conf                     what the firmware does
-  boards/lp_em_cc2340r5.conf   the 36 KB RAM budget, separately
+  boards/cc23x0.conf           the RAM budget, separately
+  app.overlay                  flash partitions and the BMI270 node
   src/
     main.c                     startup
     tracker.c                  the duty cycle
@@ -339,22 +369,26 @@ app/
     power_model.c              supply measurement and radio duty accounting
     boot_info.c, link_monitor.c, geo_sim.c, session_meta.c
 tools/
-  flash.sh                     flashing helper
+  flash.sh                     flashing helper, picks the .ccxml from the build
   cc2340r5_xds110.ccxml        DSLite target configuration
+  cc2340r53_xds110.ccxml       the same, for the CC2340R53
   spotflow_ble_gateway.py      host-side BLE → Spotflow relay
 west.yml                       pinned Zephyr and Spotflow SDK revisions
 ```
 
-`prj.conf` says what the firmware does; `boards/lp_em_cc2340r5.conf` holds every value
-that exists only because the part has 36 KB of RAM. Reading one tells you about the demo,
-the other about the memory ceiling.
+`prj.conf` says what the firmware does; `boards/cc23x0.conf` holds every value that
+exists only because the part has 36 KB of RAM. Reading one tells you about the demo, the
+other about the memory ceiling. The RAM profile is shared by both boards rather than
+copied per board, so it is named after the SoC series and pulled in from
+`app/CMakeLists.txt` — Kconfig fragments cannot include one another.
 
 ---
 
 ## Notable constraints
 
-- **RAM is 99% used.** Buffer sizes, queue depths and stacks are tuned to fit. Almost any
-  addition fails to link.
+- **RAM is 99% used** on the CC2340R5. Buffer sizes, queue depths and stacks are tuned to
+  fit. Almost any addition fails to link. The CC2340R53 has headroom, but the firmware is
+  built to the smaller budget so the two boards behave the same.
 - **Every BMI270 register write is one I²C transaction.** The stock Zephyr driver uses
   `i2c_burst_write_dt()`, which this controller splits in two; the BMI270 needs the
   register address and data in a single transaction. Split writes *return success without

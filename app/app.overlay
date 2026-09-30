@@ -1,5 +1,9 @@
 /*
- * Flash layout for the asset tracker demo.
+ * Flash layout and sensor wiring for the asset tracker demo.
+ *
+ * Applies to every board. Both supported parts have the same 512 KiB of flash, the same
+ * partition table and the same I2C0 pinout, so there is nothing to say per board and
+ * Zephyr falls back to this file when boards/ holds no overlay for the target.
  *
  * The board's default layout reserves 40 KiB for MCUboot and two 228 KiB OTA slots.
  * This demo does no OTA (Spotflow's OTA path alone wants a 98 KiB heap, which does not

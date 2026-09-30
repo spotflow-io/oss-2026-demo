@@ -3,9 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 #
-# Flash the asset tracker onto an LP-EM-CC2340R5.
+# Flash the asset tracker onto an LP-EM-CC2340R5 or an LP-EM-CC2340R53.
 #
-# The board has no onboard debugger, so this goes through a TI debug probe and DSLite,
+# Which one is read out of the build, not passed in: the two parts need different .ccxml
+# files (the <platform> block names the device) and flashing an image built for one part
+# through the other part's config is a mistake worth making impossible.
+#
+# Neither board has an onboard debugger, so this goes through a TI debug probe and DSLite,
 # which ships with UniFlash. `west flash` is not an option here: the board's runner wants
 # TI's OpenOCD build, homebrew OpenOCD has no cc23x0 flash driver, and pyOCD has no CMSIS
 # pack for this part.
@@ -19,6 +23,7 @@
 # Usage:
 #   tools/flash.sh [build-dir]            # default: build/tracker
 #   DSLITE=/path/to/dslite.sh tools/flash.sh
+#   CCXML=/path/to/target.ccxml tools/flash.sh
 
 set -euo pipefail
 
@@ -32,7 +37,8 @@ HEX="$BUILD_DIR/zephyr/zephyr.hex"
 
 if [[ ! -f "$HEX" ]]; then
 	echo "No build at $BUILD_DIR. Build first:" >&2
-	echo "  west build -b lp_em_cc2340r5 asset_tracker/app -d $BUILD_DIR" >&2
+	echo "  west build -b <board> asset_tracker/app -d $BUILD_DIR" >&2
+	echo "  (boards: lp_em_cc2340r5, lp_em_cc2340r53)" >&2
 	exit 1
 fi
 
@@ -54,6 +60,26 @@ if [[ -z "$DSLITE" || ! -x "$DSLITE" ]]; then
 	exit 1
 fi
 
+# The board target is recorded in the build, so the right .ccxml follows from the build
+# rather than from whoever is typing. Board names are lp_em_<soc>; the files are <soc>_*.
+if [[ -z "${CCXML:-}" ]]; then
+	BOARD=$(sed -n 's/^CONFIG_BOARD="\(.*\)"$/\1/p' "$BUILD_DIR/zephyr/.config" 2>/dev/null)
+
+	if [[ -z "$BOARD" ]]; then
+		echo "Could not read CONFIG_BOARD from $BUILD_DIR/zephyr/.config." >&2
+		echo "Name the target config directly: CCXML=... tools/flash.sh" >&2
+		exit 1
+	fi
+
+	CCXML="$HERE/${BOARD#lp_em_}_xds110.ccxml"
+fi
+
+if [[ ! -f "$CCXML" ]]; then
+	echo "No target config at $CCXML." >&2
+	echo "Export one from UniFlash > Standalone Command Line > [download ccxml]." >&2
+	exit 1
+fi
+
 # --verbose is not optional: without it DSLite prints nothing at all, success included.
-echo "Flashing $HEX"
-"$DSLITE" --mode flash --config="$HERE/cc2340r5_xds110.ccxml" --verbose -u "$HEX"
+echo "Flashing $HEX via $(basename "$CCXML")"
+"$DSLITE" --mode flash --config="$CCXML" --verbose -u "$HEX"

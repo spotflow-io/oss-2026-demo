@@ -3,6 +3,13 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# The RAM profile is the same for every CC23x0 board, so it lives in one file rather than
+# in each board's fragment. It has to be named here because Kconfig fragments cannot
+# include one another; anything genuinely board-specific still goes in boards/<board>.conf,
+# which Zephyr picks up on its own. Merge order is prj.conf, then the board fragment, then
+# this - and the sets do not overlap, so the order costs nothing.
+list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_SOURCE_DIR}/boards/cc23x0.conf)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(cc2340r5_asset_tracker)
 

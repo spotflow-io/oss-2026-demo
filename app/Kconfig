@@ -5,7 +5,7 @@
 # Asset tracker application options.
 #
 # Everything here is about the demo's behaviour. The RAM tuning that makes it fit on
-# 36 KiB lives in boards/lp_em_cc2340r5.conf.
+# 36 KiB lives in boards/cc23x0.conf.
 #
 
 menu "Asset tracker demo"
