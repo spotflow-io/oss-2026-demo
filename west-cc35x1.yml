@@ -8,7 +8,7 @@ manifest:
   projects:
     - name: zephyr
       url: https://github.com/TexasInstruments/simplelink-zephyr
-      revision: fe3128498408cbfa9ede215f503963c19fc22da5
+      revision: v4.4.0-ti-10.10
       clone-depth: 1
       import:
         name-allowlist:
@@ -22,7 +22,7 @@ manifest:
 
     - name: spotflow
       url: https://github.com/spotflow-io/device-sdk
-      revision: 4970cb3248ca8ea09c2d5256a328ba5f2053f6f2
+      revision: main
       path: modules/lib/spotflow
 
   self:
