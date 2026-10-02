@@ -1,0 +1,57 @@
+/*
+ * Flash layout and sensor wiring on the LP-EM-CC2340R53.
+ *
+ * This is board-selected rather than a global app.overlay. It intentionally matches the
+ * CC2340R5 demo layout, while future targets such as CC35x1 must provide their own flash
+ * map and sensor wiring instead of inheriting CC23x0 assumptions.
+ *
+ * The board's default layout reserves 40 KiB for MCUboot and two 228 KiB OTA slots.
+ * This demo does no OTA (Spotflow's OTA path alone wants a 98 KiB heap), so all of that
+ * is reclaimed for the application and a useful coredump partition.
+ *
+ * Flash is not the constraint here. A larger dump costs flash and upload time, not RAM:
+ * the kernel writes it from the fault handler, and the post-reboot upload heap remains
+ * chunk_size x queue_size (128 B x 1) regardless of partition size.
+ *
+ *   0x00000 .. 0x70000   application   448 KiB  (capped by CONFIG_FLASH_LOAD_SIZE)
+ *   0x70000 .. 0x7c000   coredump       48 KiB
+ *   0x7c000 .. 0x80000   storage        16 KiB  (reserved for possible Settings/NVS)
+ *
+ * All boundaries are 2 KiB-aligned, which the CC23x0 flash sector size requires.
+ */
+
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		/* Keep this label because the board's chosen node refers to it, even though
+		 * this image links from flash base and does not use MCUboot.
+		 */
+		slot0_partition: partition@0 {
+			label = "image-0";
+			reg = <0x00000000 0x00070000>;
+		};
+
+		/* The coredump backend resolves this fixed partition by node label. */
+		coredump_partition: partition@70000 {
+			label = "coredump-partition";
+			reg = <0x00070000 0x0000c000>;
+		};
+
+		storage_partition: partition@7c000 {
+			label = "storage";
+			reg = <0x0007c000 0x00004000>;
+		};
+	};
+};
+
+/* BMI270 on I2C0: DIO24 is SCL and DIO0 is SDA. */
+&i2c0 {
+	bmi270: bmi270@68 {
+		compatible = "bosch,bmi270";
+		reg = <0x68>;
+	};
+};

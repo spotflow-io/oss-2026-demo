@@ -130,10 +130,11 @@ power cycle clears it, and the log says so rather than claiming otherwise.
 | Board | TI **LP-EM-CC2340R5** or **LP-EM-CC2340R53** (Cortex-M0+, 512 KB flash, 36 KB / 64 KB RAM) |
 | Sensor | Bosch **BMI270** accelerometer breakout on I²C — **optional** |
 
-Either board works, and they share one configuration: same flash layout, same pinout,
-same Cortex-M0+, same TI link-layer library. Only the SRAM differs, and the firmware is
-tuned to the smaller of the two so both behave identically. Pick your board with `-b`
-and everything else follows.
+Either board works. Each has a standard Zephyr board configuration and overlay under
+`app/boards/`; Zephyr selects them from `-b`. Their current resource values and hardware
+layout intentionally match because the boards have the same flash, pinout, Cortex-M0+
+and TI link-layer library. Only the SRAM differs, and both profiles retain the smaller
+board's limits so the demo behaves identically on either unit.
 
 **The accelerometer is optional.** Both ways of running this reach the same crash through
 the same code, so pick whichever matches the hardware you have:
@@ -355,9 +356,11 @@ mid-write would truncate the dump the demo exists to show.
 
 ```
 app/
-  prj.conf                     what the firmware does
-  boards/cc23x0.conf           the RAM budget, separately
-  app.overlay                  flash partitions and the BMI270 node
+  prj.conf                             portable demo behavior
+  boards/lp_em_cc2340r5.conf           R5 resource and platform profile
+  boards/lp_em_cc2340r5.overlay        R5 flash layout and BMI270 wiring
+  boards/lp_em_cc2340r53.conf          R53 resource and platform profile
+  boards/lp_em_cc2340r53.overlay       R53 flash layout and BMI270 wiring
   src/
     main.c                     startup
     tracker.c                  the duty cycle
@@ -376,11 +379,15 @@ tools/
 west.yml                       pinned Zephyr and Spotflow SDK revisions
 ```
 
-`prj.conf` says what the firmware does; `boards/cc23x0.conf` holds every value that
-exists only because the part has 36 KB of RAM. Reading one tells you about the demo, the
-other about the memory ceiling. The RAM profile is shared by both boards rather than
-copied per board, so it is named after the SoC series and pulled in from
-`app/CMakeLists.txt` — Kconfig fragments cannot include one another.
+`prj.conf` says what the firmware does: enabled diagnostics, metric catalogue, reporting
+policy and log behavior. Each `boards/<board>.conf` says what that target can afford:
+Bluetooth buffers, Spotflow queues, heap and stack sizes, entropy setup and platform
+workarounds. The corresponding overlay owns the target's flash map and sensor wiring.
+
+The R5 and R53 files intentionally duplicate today's values. This keeps each profile
+self-contained, follows Zephyr's automatic board-file selection, and prevents a future
+CC35x1 profile from inheriting CC23x0 limits merely because those limits were once common.
+No board selection or configuration fragments are wired through `CMakeLists.txt`.
 
 ---
 

@@ -4,8 +4,8 @@
 #
 # Asset tracker application options.
 #
-# Everything here is about the demo's behaviour. The RAM tuning that makes it fit on
-# 36 KiB lives in boards/cc23x0.conf.
+# Everything here is about the demo's behaviour. Target-specific RAM and peripheral
+# tuning lives in the corresponding boards/<board>.conf fragment.
 #
 
 menu "Asset tracker demo"
