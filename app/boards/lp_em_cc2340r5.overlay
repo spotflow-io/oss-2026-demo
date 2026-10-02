@@ -1,9 +1,9 @@
 /*
- * Flash layout and sensor wiring for the asset tracker demo.
+ * Flash layout and sensor wiring on the LP-EM-CC2340R5.
  *
- * Applies to every board. Both supported parts have the same 512 KiB of flash, the same
- * partition table and the same I2C0 pinout, so there is nothing to say per board and
- * Zephyr falls back to this file when boards/ holds no overlay for the target.
+ * This is board-selected rather than a global app.overlay: the CC2340R53 currently has
+ * the same layout, but future targets such as CC35x1 must provide their own flash map and
+ * sensor wiring instead of inheriting CC23x0 assumptions.
  *
  * The board's default layout reserves 40 KiB for MCUboot and two 228 KiB OTA slots.
  * This demo does no OTA (Spotflow's OTA path alone wants a 98 KiB heap, which does not
