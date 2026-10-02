@@ -2,3 +2,4 @@ build/
 *.pyc
 __pycache__/
 .env.local
+credentials.conf

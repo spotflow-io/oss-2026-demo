@@ -10,6 +10,22 @@
 
 menu "Asset tracker demo"
 
+if SPOTFLOW_TRANSPORT_MQTT
+
+config APP_WIFI_SSID
+	string "Wi-Fi SSID"
+	help
+	  SSID of the WPA2-Personal network used by the MQTT transport. Supply
+	  this from an untracked credentials.conf file.
+
+config APP_WIFI_PASSWORD
+	string "Wi-Fi password"
+	help
+	  Password of the WPA2-Personal network used by the MQTT transport.
+	  Supply this from an untracked credentials.conf file.
+
+endif # SPOTFLOW_TRANSPORT_MQTT
+
 config APP_DUTY_CYCLE_INTERVAL_MS
 	int "Duty cycle period (ms)"
 	default 10000
