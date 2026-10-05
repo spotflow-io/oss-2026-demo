@@ -34,7 +34,7 @@ LOG_MODULE_REGISTER(app_metrics, LOG_LEVEL_INF);
 
 static struct spotflow_metric_int *m_boot_count;
 static struct spotflow_metric_float *m_battery_v;
-static struct spotflow_metric_int *m_radio_on_pct;
+static struct spotflow_metric_float *m_temperature_c;
 static struct spotflow_metric_int *m_link_disconnects;
 static struct spotflow_metric_int *m_sensor_errors;
 static struct spotflow_metric_int *m_sensor_streak;
@@ -92,7 +92,7 @@ int diag_metrics_init(void)
 {
 	register_plain("boot_count", AGG_ONCE, &m_boot_count);
 	register_plain_float("battery_v", AGG_SAMPLED, &m_battery_v);
-	register_plain("radio_on_pct", AGG_SAMPLED, &m_radio_on_pct);
+	register_plain_float("temperature_c", AGG_SAMPLED, &m_temperature_c);
 	register_plain("sensor_error_streak", AGG_SAMPLED, &m_sensor_streak);
 	/*
 	 * Unaggregated, unlike everything else here. A shake is rare and urgent, and the
@@ -145,9 +145,9 @@ void diag_report_battery(uint32_t mv)
 	report_float(m_battery_v, (float)mv / 1000.0f, "battery_v");
 }
 
-void diag_report_radio_on_pct(uint8_t pct)
+void diag_report_temperature(int16_t temp_c_x10)
 {
-	report(m_radio_on_pct, pct, "radio_on_pct");
+	report_float(m_temperature_c, (float)temp_c_x10 / 10.0f, "temperature_c");
 }
 
 void diag_report_sensor_streak(uint32_t streak)

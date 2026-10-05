@@ -91,9 +91,10 @@ int sensor_read(struct sensor_sample *out)
 
 	out->motion_mg = motion_mg;
 	out->temp_c_x10 = temp_c_x10;
+	out->temp_valid = true;
 	out->moved = motion_mg >= MOTION_WAKE_THRESHOLD_MG;
 
-	LOG_DBG("motion=%u mg temp=%d", motion_mg, temp_c_x10);
+	LOG_DBG("motion=%u mg temp=" TEMP_C_X10_FMT " C", motion_mg, TEMP_C_X10_ARGS(temp_c_x10));
 
 	return 0;
 }

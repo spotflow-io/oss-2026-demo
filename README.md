@@ -66,7 +66,7 @@ you get detail out of a device already in the field without reflashing it.
 | --- | --- |
 | `boot_count` | is it restarting, and how often? |
 | `battery_v` | how long has it got left? (float, real PMU reading) |
-| `radio_on_pct` | is something keeping the radio awake? |
+| `temperature_c` | is it running outside its rated range? (float, BMI270 die temperature) |
 | `sensor_error_streak` | is the sensor flaky, or gone? |
 | `sensor_errors` (label `kind`) | what is the bus doing? |
 | `shakes_detected` | has it been handled roughly? |

@@ -41,7 +41,17 @@ struct sensor_sample {
 	int16_t temp_c_x10; /* tenths of a degree, so logs need no float formatting */
 	uint16_t motion_mg; /* deviation from rest, in milli-g */
 	bool moved;         /* motion crossed the wake threshold */
+	bool temp_valid;    /* temp_c_x10 is a reading, not a placeholder */
 };
+
+/*
+ * Log a tenths-of-a-degree value as "23.4" - printing temp_c_x10 bare reads as 234
+ * degrees. The sign is split out so -0.5 does not come out as 0.5 or 0.-5.
+ */
+#define TEMP_C_X10_FMT "%s%u.%u"
+#define TEMP_C_X10_ARGS(t)                                                                  \
+	((t) < 0 ? "-" : ""), (unsigned int)(((t) < 0 ? -(t) : (t)) / 10),                  \
+		(unsigned int)(((t) < 0 ? -(t) : (t)) % 10)
 
 int sensor_init(void);
 

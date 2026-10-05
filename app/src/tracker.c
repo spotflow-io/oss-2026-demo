@@ -279,8 +279,12 @@ static void do_sample(void)
 	}
 
 	sensor_error_streak = 0;
-	LOG_DBG("sample: motion=%u mg temp=%d.%u C", sample.motion_mg, sample.temp_c_x10 / 10,
-		(unsigned int)(sample.temp_c_x10 % 10));
+	LOG_DBG("sample: motion=%u mg temp=" TEMP_C_X10_FMT " C", sample.motion_mg,
+		TEMP_C_X10_ARGS(sample.temp_c_x10));
+
+	if (sample.temp_valid) {
+		diag_report_temperature(sample.temp_c_x10);
+	}
 
 	if (sample.moved) {
 		LOG_INF("asset moved: %u mg", sample.motion_mg);
@@ -307,7 +311,6 @@ static void do_report(void)
 	if (battery_mv != 0U) {
 		diag_report_battery(battery_mv);
 	}
-	diag_report_radio_on_pct(power_model_radio_on_pct());
 	diag_report_sensor_streak(sensor_error_streak);
 
 	uint8_t n = link_take_disconnects(disconnects);

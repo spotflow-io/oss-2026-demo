@@ -20,25 +20,27 @@
  *
  *   boot_count               is it restarting, and how often?
  *   battery_v                how long has it got left?
- *   radio_on_pct             is something keeping the radio awake?
+ *   temperature_c            is it running outside its rated range? (BMI270 die)
  *   link_disconnects         why does the link keep dropping? (label: HCI reason)
  *   sensor_errors            what is the bus doing? (label: failure kind)
  *   sensor_error_streak      is it flaky, or is it gone?
  *   shakes_detected           has it been handled roughly, and how often?
  *   shake_peak_g              how hard was the worst of it?
  *
- * Not reported, deliberately: time-to-connect and gateway-absence are both inferable
- * from the transport connection state the SDK already reports, and a failed position fix
- * shows up as a gap rather than a number. The link monitor and the fix simulation still
- * measure them - they drive the logs and the power model - so reporting one is a
- * registration away if the heap ever allows it.
+ * Not reported, deliberately: radio_on_pct, which gave up its slot to temperature_c
+ * because the registry is full. The power model still computes it.
+ * Time-to-connect and gateway-absence are both inferable from the transport connection
+ * state the SDK already reports, and a failed position fix shows up as a gap rather than
+ * a number. The link monitor and the fix simulation still measure them - they drive the
+ * logs and the power model - so reporting one is a registration away if the heap ever
+ * allows it.
  *
- * Two of these are floats, and they are the two a person reads off a dashboard rather
- * than a log: battery_v and shake_peak_g. The device measures millivolts and milli-g
- * because that is what the hardware gives it and there is no FPU on this part, but 3.273
- * and 1.715 are the numbers an engineer thinks in, and a metric name that carries its
- * unit has to tell the truth about it. The divide happens in diag_report_*, so the
- * sensing code below this line never sees a float.
+ * Three of these are floats, the three a person reads off a dashboard rather than a
+ * log: battery_v, temperature_c and shake_peak_g. The device measures millivolts, tenths
+ * of a degree and milli-g because that is what the hardware gives it and there is no FPU
+ * on this part, but 3.273 and 1.715 are the numbers an engineer thinks in, and a metric
+ * name that carries its unit has to tell the truth about it. The divide happens in
+ * diag_report_*, so the sensing code below this line never sees a float.
  *
  * Label cardinality is RAM here: every distinct label value allocates a timeseries of
  * about 164 bytes from a 4 KiB heap shared with everything else. Both labelled metrics
@@ -61,7 +63,7 @@ int diag_metrics_init(void);
 
 void diag_report_boot(uint32_t boot_count);
 void diag_report_battery(uint32_t mv);   /* reported as battery_v, in volts */
-void diag_report_radio_on_pct(uint8_t pct);
+void diag_report_temperature(int16_t temp_c_x10); /* reported as temperature_c, in C */
 void diag_report_link_disconnect(uint8_t hci_reason, uint8_t count);
 void diag_report_sensor_error(enum sensor_err kind);
 void diag_report_sensor_streak(uint32_t streak);
