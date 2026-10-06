@@ -155,7 +155,7 @@ void diag_report_sensor_streak(uint32_t streak)
 	report(m_sensor_streak, streak, "sensor_error_streak");
 }
 
-void diag_report_link_disconnect(uint8_t hci_reason, uint8_t count)
+void diag_report_link_disconnect(uint8_t disconnect_reason, uint8_t count)
 {
 	char reason[7];
 
@@ -164,10 +164,10 @@ void diag_report_link_disconnect(uint8_t hci_reason, uint8_t count)
 	}
 
 	/*
-	 * The raw HCI reason code, not a prettified name: it is what the Bluetooth spec
-	 * and every other tool calls it, and a label is not the place to lose that.
+	 * BLE reports its raw HCI reason. The IP transport reports zero because Zephyr's
+	 * L4-disconnected event has no protocol-specific reason.
 	 */
-	(void)snprintf(reason, sizeof(reason), "0x%02x", hci_reason);
+	(void)snprintf(reason, sizeof(reason), "0x%02x", disconnect_reason);
 
 	struct spotflow_label labels[] = { { .key = "reason", .value = reason } };
 

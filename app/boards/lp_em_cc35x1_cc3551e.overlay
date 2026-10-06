@@ -1,0 +1,16 @@
+/ {
+	aliases {
+		watchdog0 = &wdt0;
+	};
+};
+
+/delete-node/ &storage_partition;
+
+&wlan0 {
+	status = "okay";
+};
+
+/* The BLE variant uses the HCI device; leaving it enabled is harmless in MQTT builds. */
+&hci0 {
+	status = "okay";
+};

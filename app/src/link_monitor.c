@@ -8,11 +8,17 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+
+#if defined(CONFIG_SPOTFLOW_TRANSPORT_BLE)
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#else
+#include <zephyr/net/conn_mgr_monitor.h>
+#include <zephyr/net/net_mgmt.h>
+#endif
 
 #include "link_monitor.h"
 #include "power_model.h"
@@ -65,7 +71,29 @@ out:
 	k_spin_unlock(&lock, key);
 }
 
-static void on_connected(struct bt_conn *conn, uint8_t err)
+static void note_connected(void)
+{
+	last_ttc_ms = k_uptime_get_32() - reachable_since_ms;
+	atomic_set(&ttc_pending, 1);
+	atomic_set(&link_up, 1);
+	power_model_note_radio(true);
+
+	LOG_INF("IP connectivity available after %u ms", last_ttc_ms);
+}
+
+static void note_disconnected(uint8_t reason)
+{
+	atomic_set(&link_up, 0);
+	down_since_ms = k_uptime_get_32();
+	reachable_since_ms = down_since_ms;
+	power_model_note_radio(false);
+	record_disconnect(reason);
+
+	LOG_WRN("transport disconnected, reason 0x%02x", reason);
+}
+
+#if defined(CONFIG_SPOTFLOW_TRANSPORT_BLE)
+static void on_connected(struct bt_conn* conn, uint8_t err)
 {
 	ARG_UNUSED(conn);
 
@@ -74,31 +102,36 @@ static void on_connected(struct bt_conn *conn, uint8_t err)
 		return;
 	}
 
-	last_ttc_ms = k_uptime_get_32() - reachable_since_ms;
-	atomic_set(&ttc_pending, 1);
-	atomic_set(&link_up, 1);
-	power_model_note_radio(true);
-
-	LOG_INF("gateway connected after %u ms", last_ttc_ms);
+	note_connected();
 }
 
-static void on_disconnected(struct bt_conn *conn, uint8_t reason)
+static void on_disconnected(struct bt_conn* conn, uint8_t reason)
 {
 	ARG_UNUSED(conn);
-
-	atomic_set(&link_up, 0);
-	down_since_ms = k_uptime_get_32();
-	reachable_since_ms = down_since_ms;
-	power_model_note_radio(false);
-	record_disconnect(reason);
-
-	LOG_WRN("gateway disconnected, reason 0x%02x", reason);
+	note_disconnected(reason);
 }
 
 static struct bt_conn_cb conn_callbacks = {
 	.connected = on_connected,
 	.disconnected = on_disconnected,
 };
+#else
+static struct net_mgmt_event_callback l4_callback;
+
+static void on_l4_event(struct net_mgmt_event_callback* callback, uint64_t event,
+			struct net_if* iface)
+{
+	ARG_UNUSED(callback);
+	ARG_UNUSED(iface);
+
+	if (event == NET_EVENT_L4_CONNECTED) {
+		note_connected();
+	} else if (event == NET_EVENT_L4_DISCONNECTED) {
+		/* L4 events do not carry a protocol-specific disconnect reason. */
+		note_disconnected(0U);
+	}
+}
+#endif
 
 void link_monitor_init(void)
 {
@@ -108,7 +141,13 @@ void link_monitor_init(void)
 	down_since_ms = now;
 	memset(disconnects, 0, sizeof(disconnects));
 
+#if defined(CONFIG_SPOTFLOW_TRANSPORT_BLE)
 	bt_conn_cb_register(&conn_callbacks);
+#else
+	net_mgmt_init_event_callback(&l4_callback, on_l4_event,
+				     NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED);
+	net_mgmt_add_event_callback(&l4_callback);
+#endif
 }
 
 bool link_is_up(void)
@@ -121,7 +160,7 @@ uint32_t link_last_time_to_connect_ms(void)
 	return last_ttc_ms;
 }
 
-bool link_take_connect_event(uint32_t *time_to_connect_ms)
+bool link_take_connect_event(uint32_t* time_to_connect_ms)
 {
 	if (atomic_cas(&ttc_pending, 1, 0)) {
 		*time_to_connect_ms = last_ttc_ms;
@@ -131,7 +170,7 @@ bool link_take_connect_event(uint32_t *time_to_connect_ms)
 	return false;
 }
 
-uint8_t link_take_disconnects(struct link_disconnect_event *out)
+uint8_t link_take_disconnects(struct link_disconnect_event* out)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
 	uint8_t n = 0;

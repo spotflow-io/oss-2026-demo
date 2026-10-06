@@ -5,16 +5,15 @@
  */
 
 /*
- * Asset tracker demo for the TI LP-EM-CC2340R5.
+ * Asset tracker demo for TI SimpleLink LaunchPads.
  *
- * A battery-powered BLE asset tag whose entire uplink to Spotflow is diagnostics: what
+ * A battery-powered asset tag whose entire uplink to Spotflow is diagnostics: what
  * the device knows about its own health, sent to somewhere an engineer can read it
  * without a cable. Sensor readings and position fixes are simulated and stay on the
  * device; what leaves it is whether those subsystems are working.
  *
- * The radio belongs to the Spotflow SDK: it calls bt_enable(), advertises the
- * observability service and talks to whatever gateway is in range. This application
- * never calls into the Bluetooth API - it only watches the link (see link_monitor.c).
+ * Spotflow uses either a BLE gateway or direct MQTT/TLS, selected at build time. The
+ * application owns Wi-Fi association but leaves the transport protocol to the SDK.
  *
  * See ti/PLAN.md for the whole design, and MEMORY.md for why this fits in 36 KiB.
  */
@@ -30,6 +29,10 @@
 #include "link_monitor.h"
 #include "power_model.h"
 #include "tracker.h"
+
+#if defined(CONFIG_SPOTFLOW_TRANSPORT_MQTT)
+#include "wifi_link.h"
+#endif
 
 LOG_MODULE_REGISTER(app_main, LOG_LEVEL_INF);
 
@@ -97,6 +100,14 @@ int main(void)
 	}
 
 	link_monitor_init();
+
+#if defined(CONFIG_SPOTFLOW_TRANSPORT_MQTT)
+	rc = wifi_link_init();
+	if (rc != 0) {
+		LOG_ERR("Wi-Fi initialization failed: %d", rc);
+	}
+#endif
+
 	diag_metrics_init();
 	track_stack_usage();
 
@@ -105,8 +116,8 @@ int main(void)
 	/*
 	 * The first line an engineer reads: which firmware, which boot, why it restarted.
 	 *
-	 * Emitted here rather than at the top of main() because the Bluetooth stack's own
-	 * startup burst overflows the log buffer in the first 30 ms and this line was being
+	 * Emitted here rather than at the top of main() because radio startup can overflow
+	 * the log buffer in the first few milliseconds and this line was being
 	 * dropped - the one line the demo opens on. By now the burst has passed.
 	 */
 	LOG_INF("asset tracker up: boot %u, reset %s%s", boot_info_count(),

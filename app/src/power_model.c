@@ -42,10 +42,10 @@
  * absolute values: the radio dominates, a fix costs real energy, idle is nearly free.
  * Scaled so a demo device visibly discharges over an afternoon rather than a decade.
  */
-#define DRAW_IDLE_UAS_PER_S   4U
+#define DRAW_IDLE_UAS_PER_S 4U
 #define DRAW_ACTIVE_UAS_PER_S 900U
-#define DRAW_FIX_UAS_PER_S    2600U
-#define DRAW_RADIO_UAS_PER_S  5400U
+#define DRAW_FIX_UAS_PER_S 2600U
+#define DRAW_RADIO_UAS_PER_S 5400U
 
 static uint64_t charge_used_uas;
 
@@ -53,38 +53,52 @@ static uint32_t radio_on_ms_window;
 static uint32_t window_start_ms;
 static uint32_t radio_on_since_ms;
 static bool radio_on;
+static struct k_spinlock state_lock;
 
-static void draw(uint32_t ms, uint32_t uas_per_s)
+static void draw_locked(uint32_t ms, uint32_t uas_per_s)
 {
 	charge_used_uas += ((uint64_t)ms * uas_per_s) / 1000ULL;
 }
 
 void power_model_init(void)
 {
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
+
 	charge_used_uas = 0;
 	radio_on_ms_window = 0;
 	radio_on = false;
 	window_start_ms = k_uptime_get_32();
+	k_spin_unlock(&state_lock, key);
 }
 
 void power_model_note_idle(uint32_t ms)
 {
-	draw(ms, DRAW_IDLE_UAS_PER_S);
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
+
+	draw_locked(ms, DRAW_IDLE_UAS_PER_S);
+	k_spin_unlock(&state_lock, key);
 }
 
 void power_model_note_active(uint32_t ms)
 {
-	draw(ms, DRAW_ACTIVE_UAS_PER_S);
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
+
+	draw_locked(ms, DRAW_ACTIVE_UAS_PER_S);
+	k_spin_unlock(&state_lock, key);
 }
 
 void power_model_note_fix(uint32_t ms)
 {
-	draw(ms, DRAW_FIX_UAS_PER_S);
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
+
+	draw_locked(ms, DRAW_FIX_UAS_PER_S);
+	k_spin_unlock(&state_lock, key);
 }
 
 void power_model_note_radio(bool on)
 {
 	uint32_t now = k_uptime_get_32();
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
 
 	if (on && !radio_on) {
 		radio_on_since_ms = now;
@@ -93,9 +107,11 @@ void power_model_note_radio(bool on)
 		uint32_t elapsed = now - radio_on_since_ms;
 
 		radio_on_ms_window += elapsed;
-		draw(elapsed, DRAW_RADIO_UAS_PER_S);
+		draw_locked(elapsed, DRAW_RADIO_UAS_PER_S);
 		radio_on = false;
 	}
+
+	k_spin_unlock(&state_lock, key);
 }
 
 uint32_t power_model_battery_mv(void)
@@ -122,15 +138,18 @@ uint32_t power_model_battery_mv(void)
 uint8_t power_model_radio_on_pct(void)
 {
 	uint32_t now = k_uptime_get_32();
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
 	uint32_t window_ms = now - window_start_ms;
 	uint32_t on_ms = radio_on_ms_window;
 
 	/* Include the part of an ongoing radio session that falls inside this window. */
 	if (radio_on) {
-		uint32_t since = (radio_on_since_ms > window_start_ms) ? radio_on_since_ms
-								      : window_start_ms;
+		uint32_t since =
+			(radio_on_since_ms > window_start_ms) ? radio_on_since_ms : window_start_ms;
 		on_ms += now - since;
 	}
+
+	k_spin_unlock(&state_lock, key);
 
 	if (window_ms == 0U) {
 		return 0U;
@@ -146,6 +165,7 @@ uint8_t power_model_radio_on_pct(void)
 void power_model_window_reset(void)
 {
 	uint32_t now = k_uptime_get_32();
+	k_spinlock_key_t key = k_spin_lock(&state_lock);
 
 	/*
 	 * Charge is cumulative, but the radio-on ratio is per window. If the radio is on
@@ -153,12 +173,13 @@ void power_model_window_reset(void)
 	 * and restart the clock from here.
 	 */
 	if (radio_on) {
-		uint32_t since = (radio_on_since_ms > window_start_ms) ? radio_on_since_ms
-								      : window_start_ms;
-		draw(now - since, DRAW_RADIO_UAS_PER_S);
+		uint32_t since =
+			(radio_on_since_ms > window_start_ms) ? radio_on_since_ms : window_start_ms;
+		draw_locked(now - since, DRAW_RADIO_UAS_PER_S);
 		radio_on_since_ms = now;
 	}
 
 	radio_on_ms_window = 0;
 	window_start_ms = now;
+	k_spin_unlock(&state_lock, key);
 }

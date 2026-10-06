@@ -1,0 +1,29 @@
+# West manifest for the CC35x1 asset tracker variants.
+#
+# CC35x1 uses TI's Zephyr 4.4 downstream because it contains both the CC35x1
+# Bluetooth HCI driver and the single-Mbed-TLS integration required by native
+# MQTT/TLS. Keep this workspace separate from the Zephyr 3.7 CC2340 workspace.
+
+manifest:
+  projects:
+    - name: zephyr
+      url: https://github.com/TexasInstruments/simplelink-zephyr
+      revision: v4.4.0-ti-10.10
+      clone-depth: 1
+      import:
+        name-allowlist:
+          - cmsis_6
+          - mbedtls
+          - mcuboot
+          - mldsa-native
+          - simplelink-hal_ti
+          - tf-psa-crypto
+          - zcbor
+
+    - name: spotflow
+      url: https://github.com/spotflow-io/device-sdk
+      revision: main
+      path: modules/lib/spotflow
+
+  self:
+    path: asset_tracker

@@ -21,7 +21,7 @@
  *   boot_count               is it restarting, and how often?
  *   battery_v                how long has it got left?
  *   radio_on_pct             is something keeping the radio awake?
- *   link_disconnects         why does the link keep dropping? (label: HCI reason)
+ *   link_disconnects         why does the link keep dropping? (label: transport reason)
  *   sensor_errors            what is the bus doing? (label: failure kind)
  *   sensor_error_streak      is it flaky, or is it gone?
  *   shakes_detected           has it been handled roughly, and how often?
@@ -62,7 +62,7 @@ int diag_metrics_init(void);
 void diag_report_boot(uint32_t boot_count);
 void diag_report_battery(uint32_t mv);   /* reported as battery_v, in volts */
 void diag_report_radio_on_pct(uint8_t pct);
-void diag_report_link_disconnect(uint8_t hci_reason, uint8_t count);
+void diag_report_link_disconnect(uint8_t disconnect_reason, uint8_t count);
 void diag_report_sensor_error(enum sensor_err kind);
 void diag_report_sensor_streak(uint32_t streak);
 void diag_report_shake(uint16_t peak_mg); /* reported as shake_peak_g, in g */
