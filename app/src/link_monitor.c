@@ -78,7 +78,7 @@ static void note_connected(void)
 	atomic_set(&link_up, 1);
 	power_model_note_radio(true);
 
-	LOG_INF("transport connected after %u ms", last_ttc_ms);
+	LOG_INF("IP connectivity available after %u ms", last_ttc_ms);
 }
 
 static void note_disconnected(uint8_t reason)
@@ -93,7 +93,7 @@ static void note_disconnected(uint8_t reason)
 }
 
 #if defined(CONFIG_SPOTFLOW_TRANSPORT_BLE)
-static void on_connected(struct bt_conn *conn, uint8_t err)
+static void on_connected(struct bt_conn* conn, uint8_t err)
 {
 	ARG_UNUSED(conn);
 
@@ -105,7 +105,7 @@ static void on_connected(struct bt_conn *conn, uint8_t err)
 	note_connected();
 }
 
-static void on_disconnected(struct bt_conn *conn, uint8_t reason)
+static void on_disconnected(struct bt_conn* conn, uint8_t reason)
 {
 	ARG_UNUSED(conn);
 	note_disconnected(reason);
@@ -118,8 +118,8 @@ static struct bt_conn_cb conn_callbacks = {
 #else
 static struct net_mgmt_event_callback l4_callback;
 
-static void on_l4_event(struct net_mgmt_event_callback *callback, uint64_t event,
-			struct net_if *iface)
+static void on_l4_event(struct net_mgmt_event_callback* callback, uint64_t event,
+			struct net_if* iface)
 {
 	ARG_UNUSED(callback);
 	ARG_UNUSED(iface);
@@ -160,7 +160,7 @@ uint32_t link_last_time_to_connect_ms(void)
 	return last_ttc_ms;
 }
 
-bool link_take_connect_event(uint32_t *time_to_connect_ms)
+bool link_take_connect_event(uint32_t* time_to_connect_ms)
 {
 	if (atomic_cas(&ttc_pending, 1, 0)) {
 		*time_to_connect_ms = last_ttc_ms;
@@ -170,7 +170,7 @@ bool link_take_connect_event(uint32_t *time_to_connect_ms)
 	return false;
 }
 
-uint8_t link_take_disconnects(struct link_disconnect_event *out)
+uint8_t link_take_disconnects(struct link_disconnect_event* out)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
 	uint8_t n = 0;

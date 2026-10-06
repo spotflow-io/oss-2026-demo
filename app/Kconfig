@@ -46,6 +46,7 @@ config APP_FIX_INTERVAL_CYCLES
 
 config APP_WATCHDOG
 	bool "Enable the hardware watchdog"
+	depends on WATCHDOG
 	default y
 	help
 	  Feed wdt0 from the duty cycle loop and report the remaining margin as a

@@ -216,6 +216,14 @@ The authoritative TI/Spotflow setup is
 The compatibility changes and first-flash sequence below were validated against that
 guide and the functional Spotflow sample in `spotflow/zephyr/samples/logs`.
 
+CC35x1 coredumps are disabled. The Toolbox 4.3.23 non-OTA layout reserves physical flash
+`0xDB000..0xFE000` for Wi-Fi/BLE NVS and `0xFE000..0x106000` for HSM key storage, leaving
+no safe coredump partition in `flash2`. Earlier versions placed a coredump at
+`0xE6000..0x105000`, overlapping both regions. The CC35x1 profile removes the application
+storage partition as well, so a future settings change cannot write into that reserved
+space unnoticed. A durable coredump implementation requires changing the Toolbox memory
+layout, generated flash map and devicetree together.
+
 ---
 
 ## Build
@@ -301,7 +309,7 @@ otherwise exceed tool limits.
 #### Toolbox 4.3.23 compatibility changes
 
 The pinned TI Zephyr release predates Toolbox 4.3.23 and does not work with it unchanged.
-Apply these four changes after `west update` and before building. They are required for
+Apply these five changes after `west update` and before building. They are required for
 both transport variants:
 
 1. In `modules/hal/ti/simplelink_lpf3/CMakeLists.txt`, change
@@ -311,15 +319,24 @@ both transport variants:
 3. In
    `zephyr/boards/ti/lp_em_cc35x1/config/flash/is25wj032f/external_memory_configurator.json`,
    add `"vendor_bl3_size": 0` and `"ti_fw_in_vendor_image": false` to `inputs`, preserving
-   valid JSON commas.
+   valid JSON commas. Without these fields, initial programming stops locally with
+   `JSON configuration error: Missing fields in 'inputs': vendor_bl3_size` before it
+   communicates with the board.
 4. In `zephyr/scripts/west_commands/runners/simplelink_toolbox.py`, remove
    `--full_flash_erase` from both command lists in `do_initial_programming()`.
+5. In
+   `modules/hal/ti/simplelink_wff3/source/ti/net/wifi_stack/driver/data_path/twd/tw_driver/tw_driver.h`,
+   wrap the `CTRL_BLK_ENTRIES_NUM` fallback definition in `#ifndef` / `#endif`. The HAL
+   CMake integration already defines it from `CONFIG_WIFI_TI_CC35XX_TX_CTRL_BLK_NUM`, but
+   the unconditional header definition otherwise overwrites that configured value with
+   120 and emits a macro-redefinition warning.
 
 These are the exact changes present in the validated workspace. Without them, BLE can
 compile incompatible LPF3 sources, image generation can reject the missing device, the
 memory schema can fail validation, or initial programming can attempt an erase forbidden
-in the board's unactivated lifecycle. A later `west update` can overwrite these dependency
-edits; check and reapply them before rebuilding.
+in the board's unactivated lifecycle. These are uncommitted dependency patches, not changes
+to the asset tracker application. A later `west update` can overwrite them; check all five
+and reapply any missing patch before rebuilding.
 
 Create the short build root once:
 
@@ -483,6 +500,9 @@ board associates with the configured 2.4 GHz WPA2-Personal network, obtains an I
 address, and establishes MQTT/TLS. Then check **Device Events** for the configured device
 ID. Association alone is not proof of a working cloud connection.
 
+The CC35x1 UART log reports `IP connectivity available` when DHCP/L4 is ready. That does
+not mean MQTT/TLS is connected; cloud connectivity must still be confirmed in Spotflow.
+
 For BLE, open the **BLE Gateway** page in the Spotflow Web App, select an ingestion key,
 scan for **Asset Tracker**, connect, and keep the page open while testing. The browser owns
 the BLE connection and cloud relay. After a crash and reboot, reconnect the gateway
@@ -495,8 +515,8 @@ asset tracker up: boot 1, reset POR
 supply 3.104 V
 ```
 
-Now trigger the crash — **shake the device** if you wired up a BMI270, or **press button
-1** if you did not. Either way:
+On CC2340, trigger the crash — **shake the device** if you wired up a BMI270, or **press
+button 1** if you did not. Either way:
 
 ```
 shake detected: 19 swings, peak 4.538 g
@@ -538,6 +558,49 @@ GNSS receiver on this board.
 **`no watchdog available`.** `wdt0` is disabled in the board devicetree. The watchdog is
 deliberately off: nothing feeds it while the fault handler writes a coredump, and a reset
 mid-write would truncate the dump the demo exists to show.
+
+On CC35x1 the same deliberate fault is recovered by the 8-second hardware watchdog, but
+no coredump is retained or uploaded because the board has no safe coredump partition.
+
+### Apply the CC35x1 scan allocation workaround
+
+Without this workaround, the TI Wi-Fi stack can stop after connecting and print:
+
+```
+CME-SCAN ERROR, failed to allocated 30672 bytes for connection scan results>>>> ASSERT
+```
+
+Apply both parts of the workaround:
+
+1. Keep the following setting in
+   `app/boards/lp_em_cc35x1_cc3551e.conf`:
+
+   ```ini
+   CONFIG_WIFI_TI_CC35XX_TX_CTRL_BLK_NUM=32
+   ```
+
+2. In
+   `modules/hal/ti/simplelink_wff3/source/ti/net/wifi_stack/driver/data_path/twd/tw_driver/tw_driver.h`,
+   replace the unconditional `CTRL_BLK_ENTRIES_NUM` definition with:
+
+   ```c
+   #ifndef CTRL_BLK_ENTRIES_NUM
+   #define CTRL_BLK_ENTRIES_NUM 120
+   #endif
+   ```
+
+3. Rebuild with `--pristine`. Confirm the generated `zephyr/.config` contains:
+
+   ```ini
+   CONFIG_WIFI_TI_CC35XX_TX_CTRL_BLK_NUM=32
+   ```
+
+4. Check the build output does not contain a `CTRL_BLK_ENTRIES_NUM redefined` warning.
+
+This workaround was validated on CC3551E hardware. Reapply the HAL guard after every
+`west update`, because the dependency update can overwrite it. The workaround prevents
+the observed allocation failure but does not replace an upstream TI fix for handling a
+failed scan allocation.
 
 ---
 
